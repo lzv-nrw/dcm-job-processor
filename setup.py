@@ -1,10 +1,12 @@
 from setuptools import setup
 
 setup(
-    version="0.1.0",
+    version="0.1.2",
     name="dcm-job-processor",
-    description="flask app for job-processor-containers",
+    description="flask app implementing the DCM Job Processor API",
     author="LZV.nrw",
+    license="MIT",
+    python_requires=">=3.10",
     install_requires=[
         "flask==3.*",
         "data-plumber-http>=1.0.0,<2",
