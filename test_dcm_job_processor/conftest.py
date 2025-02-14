@@ -56,7 +56,10 @@ def _minimal_request_body():
                 },
                 "build_ip": {
                     "build": {
-                        "configuration": "-"
+                        "mappingPlugin": {
+                            "plugin": "plugin-0",
+                            "args": {}
+                        },
                     }
                 }
             }
@@ -88,7 +91,6 @@ def _import_report(testing_config, minimal_request_body):
                     "path": "ie/4a814fe6-b44e-4546-95ec-5aee27cc1d8c",
                     "sourceIdentifier": "test:oai_dc:f50036dd-b4ef",
                     "fetchedPayload": True,
-                    "logId": "0@demo-plugin",
                     "IPIdentifier": None
                 }
             },
@@ -113,8 +115,10 @@ def _ip_builder_report(testing_config, run_service, minimal_request_body):
         },
         "log": {},
         "data": {
+            "build_plugin": "bagit_bag_builder",
+            "success": True,
             "path": "ip/389fb73c-25c0-40c6-8e17-3612729f6644",
             "valid": True,
-            "logId": [],
+            "details": {}
         }
     }

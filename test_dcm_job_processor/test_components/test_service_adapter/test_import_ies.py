@@ -72,7 +72,6 @@ def _report(url, token, request_body):
                     "path": "ie/4a814fe6-b44e-4546-95ec-5aee27cc1d8c",
                     "sourceIdentifier": "test:oai_dc:f50036dd-b4ef",
                     "fetchedPayload": True,
-                    "logId": "0@demo-plugin",
                     "IPIdentifier": None
                 }
             },

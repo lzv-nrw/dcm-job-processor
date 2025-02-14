@@ -70,8 +70,8 @@ def _report(url, token, request_body):
             ]
         },
         "data": {
+            "success": True,
             "valid": True,
-            "logId": [],
             "details": {}
         }
     }
@@ -87,7 +87,7 @@ def _report_fail(report):
 def _ip_builder(port, token, report, run_service):
     run_service(
         routes=[
-            ("/validate/ip", lambda: (token, 201), ["POST"]),
+            ("/validate", lambda: (token, 201), ["POST"]),
             ("/report", lambda: (report, 200), ["GET"]),
         ],
         port=port
@@ -98,7 +98,7 @@ def _ip_builder(port, token, report, run_service):
 def _ip_builder_fail(port, token, report_fail, run_service):
     run_service(
         routes=[
-            ("/validate/ip", lambda: (token, 201), ["POST"]),
+            ("/validate", lambda: (token, 201), ["POST"]),
             ("/report", lambda: (report_fail, 200), ["GET"]),
         ],
         port=port

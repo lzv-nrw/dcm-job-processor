@@ -21,7 +21,7 @@ class ValidationMetadataAdapter(ValidationAdapter):
         return self._SDK.DefaultApi(client), self._SDK.ValidationApi(client)
 
     def _get_api_endpoint(self):
-        return self._api_client.validate_ip
+        return self._api_client.validate
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         if target is not None:

@@ -45,20 +45,18 @@ Using a virtual environment is recommended.
    ```
    or run a gui-application, like Swagger UI, based on the OpenAPI-document provided in the sibling package [`dcm-job-processor-api`](https://github.com/lzv-nrw/dcm-job-processor-api).
 
-## Run with docker compose
-Simply run
+## Docker
+Build an image using, for example,
 ```
-docker compose up
+docker build -t dcm/job-processor:dev .
 ```
-By default, the app listens on port 8080.
-To rebuild an already existing image, run `docker compose build`.
+Then run with
+```
+docker run --rm --name=job-processor -p 8080:80 dcm/job-processor:dev
+```
+and test by making a GET-http://localhost:8080/identify request.
 
-Additionally, a Swagger UI is hosted at
-```
-http://localhost/docs
-```
-
-Afterwards, stop the process and enter `docker compose down`.
+For additional information, refer to the documentation [here](https://github.com/lzv-nrw/digital-curation-manager).
 
 ## Tests
 Install additional dev-dependencies with

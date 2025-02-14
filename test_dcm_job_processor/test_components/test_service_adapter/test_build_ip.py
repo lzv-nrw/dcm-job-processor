@@ -35,7 +35,10 @@ def _target():
 def _request_body():
     return {
         "build": {
-            "configuration": "gASVTBMA...aMVoyWhPaAiHlFIwLg==",
+            "mappingPlugin": {
+                "plugin": "plugin-0",
+                "args": {}
+            },
         },
         "validation": {"modules": []}
     }
@@ -71,16 +74,18 @@ def _report(url, token, request_body):
             ]
         },
         "data": {
+            "build_plugin": "bagit_bag_builder",
+            "success": True,
             "path": "ip/028c2879-0284-4d39-9f1c-db5eb174535e",
             "valid": True,
-            "logId": []
+            "details": {}
         }
     }
 
 
 @pytest.fixture(name="report_fail")
 def _report_fail(report):
-    report["data"]["valid"] = False
+    report["data"]["success"] = False
     return report
 
 

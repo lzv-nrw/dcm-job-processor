@@ -34,11 +34,11 @@ class BuildIPAdapter(ServiceAdapter):
         return base_request_body
 
     def success(self, info: APIResult) -> bool:
-        return info.report.get("data", {}).get("valid", False)
+        return info.report.get("data", {}).get("success", False)
 
     def export_target(self, info: APIResult) -> Any:
         try:
-            if info.report["data"]["valid"]:
+            if info.report["data"]["success"]:
                 return {"path": info.report["data"]["path"]}
         except KeyError:
             pass
