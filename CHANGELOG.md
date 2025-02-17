@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2025-02-17
+
+### Added
+
+- increased supported range of `dcm-backend-sdk` versions (now supporting v0 and v1)
+
 ## [1.0.0] - 2025-02-14
 
 ### Changed
