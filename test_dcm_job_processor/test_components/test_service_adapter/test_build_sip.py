@@ -169,6 +169,13 @@ def test_export_records_fail(
     assert records[ip_id].stages[Stage.BUILD_SIP].report == info.report
 
 
+def test_export_records_report_none(adapter: BuildSIPAdapter):
+    """
+    Test method `export_records` of `BuildSIPAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: BuildSIPAdapter, request_body, target, sip_builder
 ):

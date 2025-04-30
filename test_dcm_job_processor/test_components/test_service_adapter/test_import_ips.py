@@ -174,6 +174,13 @@ def test_export_records_fail(
     assert records[ip_id].stages[Stage.IMPORT_IPS].report == info.report
 
 
+def test_export_records_report_none(adapter: ImportIPsAdapter):
+    """
+    Test method `export_records` of `ImportIPsAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: ImportIPsAdapter, request_body, target, import_module
 ):

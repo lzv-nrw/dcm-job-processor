@@ -178,6 +178,13 @@ def test_export_records_fail(
     )
 
 
+def test_export_records_report_none(adapter: ValidationMetadataAdapter):
+    """
+    Test method `export_records` of `ValidationMetadataAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: ValidationMetadataAdapter, request_body, target, ip_builder
 ):

@@ -177,6 +177,13 @@ def test_export_records_fail(
     )
 
 
+def test_export_records_report_none(adapter: IngestAdapter):
+    """
+    Test method `export_records` of `IngestAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: IngestAdapter, request_body, target, backend
 ):

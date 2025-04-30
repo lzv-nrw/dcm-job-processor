@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2025-04-30
+
+### Fixed
+
+- fixed errors due to premature attempt at record-export during job-processing in bootstrap-phase
+
 ## [1.0.1] - 2025-02-17
 
 ### Added

@@ -178,6 +178,13 @@ def test_export_records_fail(
     assert records[ip_id].stages[Stage.BUILD_IP].report == info.report
 
 
+def test_export_records_report_none(adapter: BuildIPAdapter):
+    """
+    Test method `export_records` of `BuildIPAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: BuildIPAdapter, request_body, target, ip_builder
 ):

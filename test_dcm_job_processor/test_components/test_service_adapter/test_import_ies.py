@@ -5,8 +5,6 @@ Note that this module also contains the tests for the `ServiceAdapter`-
 interface itself.
 """
 
-from time import sleep
-
 import pytest
 from dcm_common.services import APIResult
 
@@ -176,6 +174,13 @@ def test_export_records_bad(
     assert records[
         run_result.report["data"]["IEs"]["ie0"]["sourceIdentifier"]
     ].stages[Stage.IMPORT_IES].success is fetched_payload
+
+
+def test_export_records_report_none(adapter: ImportIEsAdapter):
+    """
+    Test method `export_records` of `ImportIEsAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
 
 
 def test_export_target_single(

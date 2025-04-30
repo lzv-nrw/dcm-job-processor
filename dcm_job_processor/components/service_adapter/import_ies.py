@@ -43,6 +43,9 @@ class ImportIEsAdapter(ServiceAdapter):
         )
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         def _patch_report(report: dict, ie_id: str, ie: dict) -> dict:
             """Returns a report with replaced data-field."""
             _report = deepcopy(report)

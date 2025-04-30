@@ -52,6 +52,9 @@ class ValidationAdapter(ServiceAdapter):
         return None
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         try:
             ip_path = info.report["args"]["validation"]["target"]["path"]
         except KeyError:

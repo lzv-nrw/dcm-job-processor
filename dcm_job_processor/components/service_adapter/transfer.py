@@ -49,6 +49,9 @@ class TransferAdapter(ServiceAdapter):
         return None
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         try:
             sip_path = info.report["args"]["transfer"]["target"]["path"]
         except KeyError:

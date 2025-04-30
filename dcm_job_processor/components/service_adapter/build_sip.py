@@ -45,6 +45,9 @@ class BuildSIPAdapter(ServiceAdapter):
         return None
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         try:
             sip_path = info.report["data"]["path"]
         except KeyError:

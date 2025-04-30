@@ -43,6 +43,9 @@ class IngestAdapter(ServiceAdapter):
         return None
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         try:
             sip_path = info.report["args"]["ingest"]["rosetta"]["subdir"]
         except KeyError:

@@ -180,6 +180,13 @@ def test_export_records_fail(
     )
 
 
+def test_export_records_report_none(adapter: ValidationPayloadAdapter):
+    """
+    Test method `export_records` of `ValidationPayloadAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: ValidationPayloadAdapter, request_body, target, object_validator
 ):

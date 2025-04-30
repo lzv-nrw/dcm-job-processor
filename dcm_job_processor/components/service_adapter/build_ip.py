@@ -45,6 +45,9 @@ class BuildIPAdapter(ServiceAdapter):
         return None
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
+        if info.report is None:
+            return {}
+
         try:
             ip_path = info.report["data"]["path"]
         except KeyError:

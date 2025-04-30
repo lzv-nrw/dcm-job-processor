@@ -174,6 +174,13 @@ def test_export_records_fail(
     )
 
 
+def test_export_records_report_none(adapter: TransferAdapter):
+    """
+    Test method `export_records` of `TransferAdapter` for no report.
+    """
+    assert adapter.export_records(APIResult()) == {}
+
+
 def test_export_target(
     adapter: TransferAdapter, request_body, target, transfer_module
 ):
