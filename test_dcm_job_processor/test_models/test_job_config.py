@@ -54,11 +54,17 @@ def test_job_config_constructor_args():
 
 
 test_job_config_json = get_model_serialization_test(
-    JobConfig, (
+    JobConfig,
+    (
         ((Stage.IMPORT_IES,), {}),
         (
-            (Stage.IMPORT_IES, Stage.INGEST,),
-            {"args": {"import_ies": {"plugin": "some-plugin"}}}
+            (
+                Stage.IMPORT_IES,
+                Stage.INGEST,
+            ),
+            {
+                "args": {"import_ies": {"plugin": "some-plugin"}},
+            },
         ),
-    )
+    ),
 )

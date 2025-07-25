@@ -5,7 +5,7 @@ Test module for the `ServiceAdapter` associated with `Stage.VALIDATION_METADATA`
 import pytest
 from dcm_common.services import APIResult
 
-from dcm_job_processor.models import Stage
+from dcm_job_processor.models import Stage, Record
 from dcm_job_processor.components.service_adapter import (
     ValidationMetadataAdapter
 )
@@ -70,8 +70,11 @@ def _report(url, token, request_body):
             ]
         },
         "data": {
+            "requestType": "validation",
             "success": True,
             "valid": True,
+            "originSystemId": "origin",
+            "externalId": "external",
             "details": {}
         }
     }
@@ -207,3 +210,16 @@ def test_export_target_fail(
     fix_report_args(info, target)
     target = adapter.export_target(info)
     assert target is None
+
+
+def test_post_process_record(
+    adapter: ValidationMetadataAdapter, request_body, report, target, ip_builder
+):
+    """
+    Test method `post_process_record` of `ValidationMetadataAdapter`.
+    """
+    adapter.run(request_body, target, info := APIResult())
+    record = Record()
+    adapter.post_process_record(info, record)
+    assert record.external_id == report["data"]["externalId"]
+    assert record.origin_system_id == report["data"]["originSystemId"]

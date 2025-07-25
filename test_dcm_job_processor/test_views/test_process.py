@@ -2,8 +2,10 @@
 
 from uuid import uuid4
 from time import sleep, time
+from pathlib import Path
 
 from flask import Response
+from dcm_common import util
 
 from dcm_job_processor import app_factory
 
@@ -39,6 +41,136 @@ def test_process_minimal(
         id_.startswith(import_report["token"]["value"])
         for id_ in json["children"]
     )
+
+
+def test_process_database(
+    testing_config,
+    temp_folder,
+    minimal_request_body,
+    import_report,
+    run_service,
+    wait_for_report,
+):
+    """Test writing results to database in /process-POST endpoint."""
+    # setup test
+    # * persistent SQLite to support multiprocessing-based jobs
+    testing_config.SQLITE_DB_FILE = Path(temp_folder / str(uuid4()))
+    # * allow for many simultaneous jobs (second part of this test)
+    testing_config.ORCHESTRATION_PROCESSES = 10
+    # * initialize config/app (with extensions that initialize database)
+    config = testing_config()
+    app = app_factory(config, block=True)
+    # * write minimal data into database
+    template_id = config.db.insert("templates", {}).eval()
+    job_config_id = config.db.insert(
+        "job_configs", {"template_id": template_id}
+    ).eval()
+    user_config_id = config.db.insert(
+        "user_configs", {"username": "a", "email": "b"}
+    ).eval()
+    datetime_triggered = util.now().isoformat()
+    trigger_type = "manual"
+    # * create client for tests
+    client = app.test_client()
+
+    run_service(
+        routes=[
+            ("/import/external", lambda: (import_report["token"], 201), ["POST"]),
+            ("/report", lambda: (import_report, 200), ["GET"]),
+        ],
+        port=8080
+    )
+    # submit job
+    token = client.post(
+        "/process",
+        json=minimal_request_body
+        | {
+            "context": {
+                "jobConfigId": job_config_id,
+                "userTriggered": user_config_id,
+                "datetimeTriggered": datetime_triggered,
+                "triggerType": trigger_type,
+            }
+        },
+    ).json["value"]
+    jobs = config.db.get_rows("jobs").eval()
+    assert len(jobs) == 1
+    assert jobs[0]["token"] == token
+    assert client.put("/orchestration?until-idle", json={}).status_code == 200
+
+    # wait until job is completed
+    json = wait_for_report(client, token)
+
+    assert json["data"]["success"]
+
+    jobs = config.db.get_rows("jobs").eval()
+    assert len(jobs) == 1
+    assert all(
+        col in jobs[0] and jobs[0][col] is not None
+        for col in [
+            "token",
+            "status",
+            "job_config_id",
+            "user_triggered",
+            "datetime_triggered",
+            "trigger_type",
+            "success",
+            "datetime_started",
+            "datetime_ended",
+            "report",
+        ]
+    )
+    assert jobs[0]["token"] == token
+    assert jobs[0]["job_config_id"] == job_config_id
+    assert jobs[0]["user_triggered"] == user_config_id
+    assert jobs[0]["datetime_triggered"] == datetime_triggered
+    assert jobs[0]["trigger_type"] == trigger_type
+    assert jobs[0]["status"] == "completed"
+    assert jobs[0]["success"]
+
+    records = config.db.get_rows("records").eval()
+    assert len(records) == 1
+    assert all(
+        col in records[0] and records[0][col] is not None
+        for col in [
+            "id",
+            "job_token",
+            "success",
+            "report_id",
+        ]
+    )
+    assert records[0]["job_token"] == token
+    assert records[0]["success"]
+    assert records[0]["report_id"] in jobs[0]["report"]["data"]["records"]
+
+    # run many jobs at once and check for correct creation of records in
+    # the database
+    # this is only part of the test due to strange behavior related to the
+    # combination of the SQLite-adapter and multiprocessing
+    tokens = []
+    for _ in range(10):
+        tokens.append(
+            client.post("/process", json=minimal_request_body).json["value"]
+        )
+    assert client.put("/orchestration?until-idle", json={}).status_code == 200
+
+    # wait until all jobs are completed
+    for token in tokens:
+        assert wait_for_report(client, token)["data"]["success"]
+    assert len(config.db.get_rows("jobs").eval()) == 11
+    assert len(config.db.get_rows("records").eval()) == 11
+
+    # run job without writing records-data (triggerType "test")
+    token = client.post(
+        "/process",
+        json=minimal_request_body | {"context": {"triggerType": "test"}},
+    ).json["value"]
+    assert client.put("/orchestration?until-idle", json={}).status_code == 200
+
+    # wait until all jobs are completed
+    assert wait_for_report(client, token)["data"]["success"]
+    assert len(config.db.get_rows("jobs").eval()) == 12
+    assert len(config.db.get_rows("records").eval()) == 11
 
 
 def test_process_multiple_records(
@@ -208,6 +340,42 @@ def test_process_connection_error_second_stage(
     )
 
 
+def test_process_request_timeout(
+    testing_config, minimal_request_body, run_service, wait_for_report
+):
+    """
+    Test behavior of /process-POST endpoint with service timeout
+    during submission.
+    """
+
+    testing_config.REQUEST_TIMEOUT = 0.01
+
+    msg = "some message"
+    def _import():
+        sleep(2*testing_config.REQUEST_TIMEOUT)
+        return msg, 400
+    run_service(routes=[("/import/external", _import, ["POST"])], port=8080)
+
+    client = app_factory(testing_config(), block=True).test_client()
+
+    # submit job
+    response = client.post(
+        "/process",
+        json=minimal_request_body
+    )
+    assert client.put("/orchestration?until-idle", json={}).status_code == 200
+
+    # wait until job is completed
+    json = wait_for_report(client, response.json["value"])
+
+    assert not json["data"]["success"]
+    assert msg not in str(json)
+    assert (
+        f"Cannot connect to service at '{testing_config.IMPORT_MODULE_HOST}'"
+        in str(json)
+    )
+
+
 def test_process_timeout(
     testing_config, minimal_request_body, import_report, run_service,
     wait_for_report
@@ -224,7 +392,7 @@ def test_process_timeout(
     )
 
     testing_config.PROCESS_TIMEOUT = 0.1
-    client = app_factory(testing_config()).test_client()
+    client = app_factory(testing_config(), block=True).test_client()
 
     # submit job
     response = client.post(

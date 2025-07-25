@@ -108,10 +108,21 @@ def test_record_make_picklable(request):
 
 
 test_record_json = get_model_serialization_test(
-    Record, (
+    Record,
+    (
         ((), {}),
-        ((True,), {"stages": {Stage.IMPORT_IES: APIResult()}}),
-    )
+        (
+            (True,),
+            {
+                "stages": {Stage.IMPORT_IES: APIResult()},
+                "external_id": "a",
+                "origin_system_id": "b",
+                "sip_id": "c",
+                "ie_id": "d",
+                "datetime_processed": "0",
+            },
+        ),
+    ),
 )
 
 

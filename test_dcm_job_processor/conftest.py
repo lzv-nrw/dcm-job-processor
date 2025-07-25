@@ -19,6 +19,18 @@ def _fixtures():
     return Path("test_dcm_job_processor/fixtures/")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def disable_extension_logging():
+    """
+    Disables the stderr-logging via the helper method `print_status`
+    of the `dcm_common.services.extensions`-subpackage.
+    """
+    # pylint: disable=import-outside-toplevel
+    from dcm_common.services.extensions.common import PrintStatusSettings
+
+    PrintStatusSettings.silent = True
+
+
 @pytest.fixture(name="testing_config")
 def _testing_config():
     """Returns test-config"""
@@ -29,6 +41,10 @@ def _testing_config():
         ORCHESTRATION_DAEMON_INTERVAL = 0.001
         ORCHESTRATION_ORCHESTRATOR_INTERVAL = 0.001
         ORCHESTRATION_ABORT_NOTIFICATIONS_STARTUP_INTERVAL = 0.01
+        DB_ADAPTER_STARTUP_IMMEDIATELY = True
+        DB_ADAPTER_STARTUP_INTERVAL = 0.01
+        DB_INIT_STARTUP_INTERVAL = 0.01
+        DB_LOAD_SCHEMA = True
 
     return TestingConfig
 
@@ -39,7 +55,7 @@ def _client(testing_config):
     Returns test_client.
     """
 
-    return app_factory(testing_config()).test_client()
+    return app_factory(testing_config(), block=True).test_client()
 
 
 @pytest.fixture(name="minimal_request_body")
@@ -63,8 +79,7 @@ def _minimal_request_body():
                     }
                 }
             }
-        },
-        "id": "my-config-id"
+        }
     }
 
 
@@ -115,10 +130,12 @@ def _ip_builder_report(testing_config, run_service, minimal_request_body):
         },
         "log": {},
         "data": {
-            "build_plugin": "bagit_bag_builder",
+            "requestType": "build",
             "success": True,
             "path": "ip/389fb73c-25c0-40c6-8e17-3612729f6644",
             "valid": True,
+            "originSystemId": "origin",
+            "externalId": "external",
             "details": {}
         }
     }

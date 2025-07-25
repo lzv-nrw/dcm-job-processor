@@ -77,3 +77,9 @@ class ServiceAdapter(ServiceAdapter_, metaclass=abc.ABCMeta):
             f"{self.__class__.__name__} missing implementation of "
             + "`export_records`."
         )
+
+    def post_process_record(self, info: APIResult, record: Record) -> None:
+        """
+        Performs post-processing actions on given `record` in place.
+        """
+        return

@@ -74,7 +74,7 @@ def _report(url, token, request_body):
             ]
         },
         "data": {
-            "build_plugin": "bagit_bag_builder",
+            "requestType": "build",
             "success": True,
             "path": "ip/028c2879-0284-4d39-9f1c-db5eb174535e",
             "valid": True,

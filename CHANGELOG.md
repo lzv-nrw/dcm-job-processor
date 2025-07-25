@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.0] - 2025-07-25
+
+### Changed
+
+- **Breaking:** migrated to Backend API v2
+- **Breaking:** migrated to IP Builder API v5
+- **Breaking:** changed default ports for other dcm-services
+
+### Added
+
+- added `REQUEST_TIMEOUT` environment variable and use it in the service adapters
+- **Breaking:** added execution context to `POST-/process`-endpoint
+- added `prepare_ip` Stage
+- **Breaking:** replaced key-value store-database with sql-database
+
+### Fixed
+
+- fix orchestrator initialization (missing `nprocesses`-arg)
+
 ## [1.0.2] - 2025-04-30
 
 ### Fixed

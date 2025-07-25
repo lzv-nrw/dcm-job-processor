@@ -29,9 +29,12 @@ class IngestAdapter(ServiceAdapter):
         if target is not None:
             if "ingest" not in base_request_body:
                 base_request_body["ingest"] = {}
-            if "rosetta" not in base_request_body["ingest"]:
-                base_request_body["ingest"]["rosetta"] = {}
-            base_request_body["ingest"]["rosetta"]["subdir"] = (
+            if "archiveId" not in base_request_body["ingest"]:
+                base_request_body["ingest"]["archiveId"] = ""
+            if "target" not in base_request_body["ingest"]:
+                base_request_body["ingest"]["target"] = {}
+            # TODO: the next step depends on the specific archive-system
+            base_request_body["ingest"]["target"]["subdirectory"] = (
                 target["path"]
             )
         return base_request_body
@@ -47,7 +50,9 @@ class IngestAdapter(ServiceAdapter):
             return {}
 
         try:
-            sip_path = info.report["args"]["ingest"]["rosetta"]["subdir"]
+            # TODO: this also needs to be updated to support different
+            # archive systems
+            sip_path = info.report["args"]["ingest"]["target"]["subdirectory"]
         except KeyError:
             return {}
         return {
@@ -59,3 +64,18 @@ class IngestAdapter(ServiceAdapter):
                 }
             )
         }
+
+    def post_process_record(self, info: APIResult, record: Record) -> None:
+        if info.report is None:
+            return
+
+        record.sip_id = (
+            info.report.get("data", {}).get("details", {})
+            .get("deposit", {})
+            .get("sip_id")
+        )
+        record.ie_id = (
+            info.report.get("data", {}).get("details", {})
+            .get("sip", {})
+            .get("iePids")
+        )

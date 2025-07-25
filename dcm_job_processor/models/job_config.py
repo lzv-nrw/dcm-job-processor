@@ -12,6 +12,7 @@ from dcm_common.models import JSONObject, DataModel
 @dataclass
 class _Stage:
     """Internal Record-class for data related to single stage."""
+
     identifier: str
     adapter: Optional["ServiceAdapter"] = None
     children: tuple["_Stage"] = field(default_factory=lambda: ())
@@ -26,6 +27,7 @@ class Stage(Enum):
     Note that the field `adapter` in the enum-values are not
     initialized at import but have to be initialized manually.
     """
+
     IMPORT_IES = _Stage("import_ies")
     IMPORT_IPS = _Stage("import_ips")
     BUILD_IP = _Stage("build_ip")
@@ -34,6 +36,7 @@ class Stage(Enum):
     VALIDATION = _Stage(
         "validation", children=(VALIDATION_METADATA, VALIDATION_PAYLOAD)
     )
+    PREPARE_IP = _Stage("prepare_ip")
     BUILD_SIP = _Stage("build_sip")
     TRANSFER = _Stage("transfer")
     INGEST = _Stage("ingest")
@@ -67,15 +70,17 @@ class Stage(Enum):
 
 
 class JobConfig(DataModel):
+    """Job configuration"""
+
     from_: str | Stage
     to: str | Stage
     args: Optional[dict[str, JSONObject]]
 
     def __init__(
         self,
-        from_: str | Stage, to: Optional[str | Stage] = None,
+        from_: str | Stage,
+        to: Optional[str | Stage] = None,
         args: Optional[dict[str, JSONObject]] = None,
-        id_: Optional[str] = None
     ):
         if isinstance(from_, str):
             self.from_ = Stage.from_string(from_)
@@ -91,7 +96,6 @@ class JobConfig(DataModel):
             }
         else:
             self.args = {}
-        self.id_ = id_
 
     @DataModel.serialization_handler("from_", "from")
     @classmethod

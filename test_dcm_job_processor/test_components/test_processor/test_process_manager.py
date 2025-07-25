@@ -77,7 +77,7 @@ def _pm(config: JobConfig):
         ),
         (
             Stage.VALIDATION_METADATA, Stage.BUILD_SIP, (
-                Stage.VALIDATION_METADATA, Stage.BUILD_SIP
+                Stage.VALIDATION_METADATA, Stage.PREPARE_IP, Stage.BUILD_SIP
             )
         ),
         (
@@ -87,13 +87,14 @@ def _pm(config: JobConfig):
         ),
         (
             Stage.BUILD_IP, Stage.BUILD_SIP, (
-                Stage.BUILD_IP, Stage.VALIDATION, Stage.BUILD_SIP
+                Stage.BUILD_IP, Stage.VALIDATION, Stage.PREPARE_IP,
+                Stage.BUILD_SIP
             )
         ),
         (
             Stage.BUILD_IP, None, (
-                Stage.BUILD_IP, Stage.VALIDATION, Stage.BUILD_SIP,
-                Stage.TRANSFER, Stage.INGEST
+                Stage.BUILD_IP, Stage.VALIDATION, Stage.PREPARE_IP,
+                Stage.BUILD_SIP, Stage.TRANSFER, Stage.INGEST
             )
         ),
     ],

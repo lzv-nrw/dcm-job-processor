@@ -7,6 +7,7 @@ from typing import Any
 import dcm_ip_builder_sdk
 
 from dcm_job_processor.models.job_config import Stage
+from dcm_job_processor.models.job_result import Record, APIResult
 from .validation import ValidationAdapter
 
 
@@ -29,3 +30,12 @@ class ValidationMetadataAdapter(ValidationAdapter):
                 base_request_body["validation"] = {}
             base_request_body["validation"]["target"] = target
         return base_request_body
+
+    def post_process_record(self, info: APIResult, record: Record) -> None:
+        if info.report is None:
+            return
+
+        record.origin_system_id = info.report.get("data", {}).get(
+            "originSystemId"
+        )
+        record.external_id = info.report.get("data", {}).get("externalId")

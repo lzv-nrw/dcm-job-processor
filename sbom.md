@@ -5,7 +5,6 @@
 |PyYAML (python library) | MIT License | Support for YAML format, [GitHub](https://github.com/yaml/pyyaml) |
 |data-plumber-http (python library) | MIT License | http-extension for data-plumber (validate/process request args), [GitHub](https://github.com/RichtersFinger/data-plumber-http) |
 |pytest (python library) | MIT License | (dev) test framework, [GitHub](https://github.com/pytest-dev/pytest) |
-|pytest-cov (python library) | MIT License | (dev) coverage-plugin for pytest, [GitHub](https://github.com/pytest-dev/pytest-cov) |
 |dcm-common (python library) | MIT License | DCM common code-package, [GitHub](https://github.com/lzv-nrw/dcm-common) |
 |dcm-job-processor-api (python library) | MIT License | DCM Job Processor API-package, [GitHub](https://github.com/lzv-nrw/dcm-job-processor-api) |
 |dcm-object-validator-sdk (python library) | MIT License | DCM Object Validator SDK-package, [GitHub](https://github.com/lzv-nrw/dcm-object-validator-api) |

@@ -5,11 +5,12 @@ from pathlib import Path
 from importlib.metadata import version
 
 import yaml
-from dcm_common.services import OrchestratedAppConfig
+from dcm_common.services import OrchestratedAppConfig, DBConfig
+import dcm_database
 import dcm_job_processor_api
 
 
-class AppConfig(OrchestratedAppConfig):
+class AppConfig(OrchestratedAppConfig, DBConfig):
     """
     Configuration for the 'Job Processor'-app.
     """
@@ -19,6 +20,7 @@ class AppConfig(OrchestratedAppConfig):
     FS_MOUNT_POINT = Path.cwd()
 
     # ------ PROCESS ------
+    REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT") or 1)
     PROCESS_TIMEOUT = int(os.environ.get("PROCESS_TIMEOUT") or 30)
 
     IMPORT_MODULE_HOST = (
@@ -30,15 +32,25 @@ class AppConfig(OrchestratedAppConfig):
     OBJECT_VALIDATOR_HOST = (
         os.environ.get("OBJECT_VALIDATOR_HOST") or "http://localhost:8082"
     )
+    PREPARATION_MODULE_HOST = (
+        os.environ.get("PREPARATION_MODULE_HOST") or "http://localhost:8083"
+    )
     SIP_BUILDER_HOST = (
-        os.environ.get("SIP_BUILDER_HOST") or "http://localhost:8083"
+        os.environ.get("SIP_BUILDER_HOST") or "http://localhost:8084"
     )
     TRANSFER_MODULE_HOST = (
-        os.environ.get("TRANSFER_MODULE_HOST") or "http://localhost:8084"
+        os.environ.get("TRANSFER_MODULE_HOST") or "http://localhost:8085"
     )
     BACKEND_HOST = (
-        os.environ.get("BACKEND_HOST") or "http://localhost:8085"
+        os.environ.get("BACKEND_HOST") or "http://localhost:8086"
     )
+
+    # ------ EXTENSIONS ------
+    DB_INIT_STARTUP_INTERVAL = 1.0
+
+    # ------ DATABASE ------
+    DB_LOAD_SCHEMA = (int(os.environ.get("DB_LOAD_SCHEMA") or 0)) == 1
+    DB_SCHEMA = Path(dcm_database.__file__).parent / "init.sql"
 
     # ------ IDENTIFY ------
     # generate self-description
@@ -66,15 +78,20 @@ class AppConfig(OrchestratedAppConfig):
         # configuration
         settings = self.CONTAINER_SELF_DESCRIPTION["configuration"]["settings"]
         settings["process"] = {
-            "timeout": {
+            "request_timeout": {
+                "duration": self.REQUEST_TIMEOUT,
+            },
+            "process_timeout": {
                 "duration": self.PROCESS_TIMEOUT,
             },
         }
+        settings["database"]["schemaVersion"] = version("dcm-database")
 
         self.CONTAINER_SELF_DESCRIPTION["configuration"]["services"] = {
             "import_module": self.IMPORT_MODULE_HOST,
             "ip_builder": self.IP_BUILDER_HOST,
             "object_validator": self.OBJECT_VALIDATOR_HOST,
+            "preparation_module": self.PREPARATION_MODULE_HOST,
             "sip_builder": self.SIP_BUILDER_HOST,
             "transfer_module": self.TRANSFER_MODULE_HOST,
             "backend": self.BACKEND_HOST

@@ -35,12 +35,13 @@ Using a virtual environment is recommended.
          "build_ip": { ... },
          "validation_metadata": { ... },
          "validation_payload": { ... },
+         "prepare_ip": { ... },
          "build_sip": { ... },
          "transfer": { ... },
          "ingest": { ... },
        }
      },
-     "id": "dab3e1bf-f655-4e57-938d-d6953612552b"
+     "context": {"triggerType": "manual"}
    }'
    ```
    or run a gui-application, like Swagger UI, based on the OpenAPI-document provided in the sibling package [`dcm-job-processor-api`](https://github.com/lzv-nrw/dcm-job-processor-api).
@@ -70,17 +71,21 @@ pytest -v -s
 
 ## Environment/Configuration
 Service-specific environment variables are
-* `PROCESS_TIMEOUT` [DEFAULT 30] service timeout duration in seconds
+* `DB_LOAD_SCHEMA` [DEFAULT 0]: whether the database should be initialized with the database schema
+* `REQUEST_TIMEOUT` [DEFAULT 1] timeout duration for the submission of a request to a service in seconds
+* `PROCESS_TIMEOUT` [DEFAULT 30] timeout duration for the completion of a service job in seconds
 * `IMPORT_MODULE_HOST` [DEFAULT http://localhost:8080] Import Module host address
 * `IP_BUILDER_HOST` [DEFAULT http://localhost:8081] IP Builder host address
 * `OBJECT_VALIDATOR_HOST` [DEFAULT http://localhost:8082] Object Validator host address
-* `SIP_BUILDER_HOST` [DEFAULT http://localhost:8083] SIP Builder host address
-* `TRANSFER_MODULE_HOST` [DEFAULT http://localhost:8084] Transfer Module host address
-* `BACKEND_HOST` [DEFAULT http://localhost:8085] Backend host address
+* `PREPARATION_MODULE_HOST` [DEFAULT http://localhost:8083] Preparation Module host address
+* `SIP_BUILDER_HOST` [DEFAULT http://localhost:8084] SIP Builder host address
+* `TRANSFER_MODULE_HOST` [DEFAULT http://localhost:8085] Transfer Module host address
+* `BACKEND_HOST` [DEFAULT http://localhost:8086] Backend host address
 
 Additionally this service provides environment options for
-* `BaseConfig` and
-* `OrchestratedAppConfig`
+* `BaseConfig`,
+* `OrchestratedAppConfig`, and
+* `DBConfig`
 
 as listed [here](https://github.com/lzv-nrw/dcm-common#app-configuration).
 

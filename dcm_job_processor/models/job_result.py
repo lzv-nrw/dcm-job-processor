@@ -28,6 +28,11 @@ class Record(DataModel):
     completed: bool = False
     success: Optional[bool] = None
     stages: dict[Stage | str, APIResult] = field(default_factory=lambda: {})
+    external_id: Optional[str] = None
+    origin_system_id: Optional[str] = None
+    sip_id: Optional[str] = None
+    ie_id: Optional[str] = None
+    datetime_processed: Optional[str] = None
 
     @DataModel.serialization_handler("stages")
     @classmethod
@@ -57,6 +62,88 @@ class Record(DataModel):
             for k, v in self.stages.items()
         }
         return self
+
+    @DataModel.serialization_handler("external_id", "externalId")
+    @classmethod
+    def external_id_serialization(cls, value):
+        """Performs `external_id`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("external_id", "externalId")
+    @classmethod
+    def external_id_deserialization(cls, value):
+        """Performs `external_id`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.serialization_handler("origin_system_id", "originSystemId")
+    @classmethod
+    def origin_system_id_serialization(cls, value):
+        """Performs `origin_system_id`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("origin_system_id", "originSystemId")
+    @classmethod
+    def origin_system_id_deserialization(cls, value):
+        """Performs `origin_system_id`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.serialization_handler("sip_id", "sipId")
+    @classmethod
+    def sip_id_serialization(cls, value):
+        """Performs `sip_id`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("sip_id", "sipId")
+    @classmethod
+    def sip_id_deserialization(cls, value):
+        """Performs `sip_id`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.serialization_handler("ie_id", "ieId")
+    @classmethod
+    def ie_id_serialization(cls, value):
+        """Performs `ie_id`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("ie_id", "ieId")
+    @classmethod
+    def ie_id_deserialization(cls, value):
+        """Performs `ie_id`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.serialization_handler("datetime_processed", "datetimeProcessed")
+    @classmethod
+    def datetime_processed_serialization(cls, value):
+        """Performs `datetime_processed`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler(
+        "datetime_processed", "datetimeProcessed"
+    )
+    @classmethod
+    def datetime_processed_deserialization(cls, value):
+        """Performs `datetime_processed`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
 
 
 @dataclass

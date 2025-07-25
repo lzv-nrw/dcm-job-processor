@@ -35,6 +35,7 @@ class ProcessManager:
     """
     _SEQUENCE_COMMON = (
         Stage.VALIDATION,
+        Stage.PREPARE_IP,
         Stage.BUILD_SIP,
         Stage.TRANSFER,
         Stage.INGEST

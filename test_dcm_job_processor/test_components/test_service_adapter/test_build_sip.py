@@ -27,7 +27,7 @@ def _adapter(url):
 @pytest.fixture(name="target")
 def _target():
     return {
-        "path": "ip/59438ebf-75e0-4345-8d6b-132a57e1e4f5"
+        "path": "pip/59438ebf-75e0-4345-8d6b-132a57e1e4f5"
     }
 
 

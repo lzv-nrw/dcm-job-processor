@@ -2,6 +2,7 @@
 This module defines the `Processor` component of the Job Processor-app.
 """
 
+from typing import Optional, Callable
 from time import sleep
 
 from dcm_common.orchestration import Children
@@ -19,9 +20,12 @@ class Processor:
 
     def process(
         self,
-        result: JobResult, push, children: Children,
+        result: JobResult,
+        push,
+        children: Children,
         config: JobConfig,
-        interval: float = 0.1
+        interval: float = 0.1,
+        on_update: Optional[Callable[[], None]] = None,
     ):
         """
         Execute a job as defined in `config` while continuously updating
@@ -29,6 +33,7 @@ class Processor:
         """
         manager = ProcessManager(config, result)
 
+        current_result = result.json
         while manager.in_process():
             # start all pending Tasks
             for task in manager.queue:
@@ -41,3 +46,8 @@ class Processor:
             manager.update(flush=True)
 
             push()
+            new_result = result.json
+            if on_update and current_result != new_result:
+
+                on_update()
+                current_result = new_result

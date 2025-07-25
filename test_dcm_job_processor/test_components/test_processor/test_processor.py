@@ -151,3 +151,42 @@ def test_process_push(processor: Processor, fake_process_manager):
             interval=0.0001
         )
     assert data["counter"] == number
+
+
+def test_process_on_update(processor: Processor, fake_process_manager):
+    """
+    Test method `process` of class `Processor` for the `on_update`
+    argument.
+    """
+
+    result = JobResult(records={"ie": []})
+    number = 5
+    queue = []
+    queues = [
+        (
+            # do nothing in first iterations, then change result.records
+            # to trigger call to on_update
+            [
+                FakeTask(
+                    lambda: result.records["ie"].append(None)
+                )
+            ]
+            if i >= 2
+            else []
+        )
+        for i in range(number - 1)
+    ]
+    with patch(
+        "dcm_job_processor.components.processor.processor.ProcessManager",
+        fake_process_manager(queue, queues)
+    ):
+        data = {"counter": 0}
+        processor.process(
+            result,
+            lambda: None,
+            None,
+            JobConfig(Stage.IMPORT_IES),
+            interval=0.0001,
+            on_update=lambda: data.update({"counter": data["counter"] + 1}),
+        )
+    assert data["counter"] < number
