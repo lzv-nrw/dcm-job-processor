@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.1] - 2025-08-06
+
+### Fixed
+
+- fixed problematic re-use of existing database connections in child-processes
+
 ## [2.0.0] - 2025-07-25
 
 ### Changed

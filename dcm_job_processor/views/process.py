@@ -13,6 +13,10 @@ from dcm_common.util import now
 from dcm_common.orchestration import JobConfig, Job, Children
 from dcm_common.models import Token
 from dcm_common import services
+from dcm_common.db import (
+    SQLiteAdapter3,
+    PostgreSQLAdapterSQL14,
+)
 
 from dcm_job_processor.config import AppConfig
 from dcm_job_processor.models import (
@@ -191,6 +195,13 @@ class ProcessView(services.OrchestratedView):
         job_config -- job configuration details
         context -- job execution context
         """
+
+        # since we are in a separate process, we need to use a new db-adapter
+        # (new connections, to be specific) as pscopg-connections must not be
+        # shared across processes
+        self.config.init_adapter()
+        if not self.config.db.pool.is_open:
+            self.config.db.pool.init_pool()
 
         report.progress.verbose = ("starting processor")
         report.log.log(

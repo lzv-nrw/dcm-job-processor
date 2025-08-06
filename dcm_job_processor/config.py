@@ -61,6 +61,18 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
         Loader=yaml.SafeLoader
     )
 
+    def __init__(self) -> None:
+        if self.DB_ADAPTER == "sqlite" and self.SQLITE_DB_FILE is None:
+            # this limitation comes from the requirement to use the
+            # database in the app as well as in jobs (separate processes)
+            # generally, database connections cannot be inherited by
+            # forking the process
+            raise ValueError(
+                "The Job Processor does not support an in-memory "
+                + "SQLite-database."
+            )
+        super().__init__()
+
     def set_identity(self) -> None:
         super().set_identity()
         self.CONTAINER_SELF_DESCRIPTION["description"] = (

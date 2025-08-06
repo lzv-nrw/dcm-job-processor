@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from dcm_common.services.tests import (
@@ -32,7 +33,7 @@ def disable_extension_logging():
 
 
 @pytest.fixture(name="testing_config")
-def _testing_config():
+def _testing_config(temp_folder):
     """Returns test-config"""
     # setup config-class
     class TestingConfig(AppConfig):
@@ -45,6 +46,7 @@ def _testing_config():
         DB_ADAPTER_STARTUP_INTERVAL = 0.01
         DB_INIT_STARTUP_INTERVAL = 0.01
         DB_LOAD_SCHEMA = True
+        SQLITE_DB_FILE = temp_folder / str(uuid4())
 
     return TestingConfig
 
