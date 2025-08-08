@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.0] - 2025-08-08
+
+### Added
+
+- added validation of schema version to database initialization extension
+
 ## [2.0.1] - 2025-08-06
 
 ### Fixed

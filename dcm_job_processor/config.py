@@ -51,6 +51,9 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     # ------ DATABASE ------
     DB_LOAD_SCHEMA = (int(os.environ.get("DB_LOAD_SCHEMA") or 0)) == 1
     DB_SCHEMA = Path(dcm_database.__file__).parent / "init.sql"
+    DB_STRICT_SCHEMA_VERSION = (
+        int(os.environ.get("DB_STRICT_SCHEMA_VERSION") or 0)
+    ) == 1
 
     # ------ IDENTIFY ------
     # generate self-description

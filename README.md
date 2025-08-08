@@ -72,6 +72,7 @@ pytest -v -s
 ## Environment/Configuration
 Service-specific environment variables are
 * `DB_LOAD_SCHEMA` [DEFAULT 0]: whether the database should be initialized with the database schema
+* `DB_STRICT_SCHEMA_VERSION` [DEFAULT 0] whether to enforce matching database schema version with respect to currently installed `dcm-database`
 * `REQUEST_TIMEOUT` [DEFAULT 1] timeout duration for the submission of a request to a service in seconds
 * `PROCESS_TIMEOUT` [DEFAULT 30] timeout duration for the completion of a service job in seconds
 * `IMPORT_MODULE_HOST` [DEFAULT http://localhost:8080] Import Module host address
