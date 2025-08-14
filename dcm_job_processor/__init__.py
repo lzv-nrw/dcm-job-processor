@@ -10,7 +10,7 @@ from time import time, sleep
 from flask import Flask
 from dcm_common.db import KeyValueStoreAdapter, SQLAdapter
 from dcm_common.orchestration import (
-    ScalableOrchestrator, orchestrator_controls_bp
+    ScalableOrchestrator, get_orchestration_controls
 )
 from dcm_common.services import DefaultView, ReportView
 from dcm_common.services import extensions as common_extensions
@@ -68,8 +68,18 @@ def app_factory(
     # register extensions
     if config.ALLOW_CORS:
         common_extensions.cors(app)
+    notifications_loader = common_extensions.notifications_loader(
+        app, config, as_process
+    )
     orchestrator_loader = common_extensions.orchestration_loader(
-        app, config, orchestrator, "Job Processor", as_process
+        app, config, orchestrator, "Job Processor", as_process,
+        [
+            common_extensions.ExtensionEventRequirement(
+                notifications_loader.ready,
+                "connection to notification-service",
+            )
+        ],
+
     )
     db_loader = common_extensions.db_loader(app, config, config.db, as_process)
     db_init_loader = extensions.db_init_loader(
@@ -103,12 +113,13 @@ def app_factory(
     # register orchestrator-controls blueprint
     if getattr(config, "TESTING", False) or config.ORCHESTRATION_CONTROLS_API:
         app.register_blueprint(
-            orchestrator_controls_bp(
-                orchestrator, orchestrator_loader.data,
-                default_orchestrator_settings={
+            get_orchestration_controls(
+                orchestrator,
+                orchestrator_loader.data,
+                orchestrator_settings={
                     "interval": config.ORCHESTRATION_ORCHESTRATOR_INTERVAL,
                 },
-                default_daemon_settings={
+                daemon_settings={
                     "interval": config.ORCHESTRATION_DAEMON_INTERVAL,
                 }
             ),
