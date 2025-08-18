@@ -13,10 +13,6 @@ from dcm_common.util import now
 from dcm_common.orchestration import JobConfig, Job, Children
 from dcm_common.models import Token
 from dcm_common import services
-from dcm_common.db import (
-    SQLiteAdapter3,
-    PostgreSQLAdapterSQL14,
-)
 
 from dcm_job_processor.config import AppConfig
 from dcm_job_processor.models import (
@@ -146,7 +142,41 @@ class ProcessView(services.OrchestratedView):
 
             return jsonify(token.json), 201
 
-        self._register_abort_job(bp, "/process")
+        def post_abort_hook(token: str) -> None:
+            """
+            Check if info-object in database is still marked as running.
+            (This is only the case if the job did not run before abort.)
+            """
+            info = self.config.db.get_row("jobs", token).eval()
+            if info is not None:
+                if info.get("status") in ["queued", "running"]:
+                    self.config.db.update(
+                        "jobs",
+                        {
+                            "token": token,
+                            "status": "aborted",
+                            "datetime_ended": info.get("datetime_ended")
+                            or now(True).isoformat(),
+                        },
+                    ).eval()
+
+        self._register_abort_job(
+            bp, "/process", post_abort_hook=post_abort_hook
+        )
+
+    def abort_hook(self, data: Report, push):
+        """Runs default abort-hook and update report in database."""
+        services.default_abort_hook(data, push)
+        self.config.db.update(
+            "jobs",
+            {
+                "token": data.token.value,
+                "status": data.progress.status.value,
+                "success": data.data.success,
+                "report": data.json,
+                "datetime_ended": now(True).isoformat(),
+            },
+        ).eval()
 
     def get_job(self, config: JobConfig) -> Job:
         return Job(
@@ -165,7 +195,7 @@ class ProcessView(services.OrchestratedView):
                 "startup": services.default_startup_hook,
                 "success": services.default_success_hook,
                 "fail": services.default_fail_hook,
-                "abort": services.default_abort_hook,
+                "abort": self.abort_hook,
                 "completion": services.termination_callback_hook_factory(
                     config.request_body.get("callback_url", None),
                 ),

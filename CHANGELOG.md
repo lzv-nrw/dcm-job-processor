@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2] - 2025-08-18
+
+### Fixed
+
+- fixed `DELETE-/process` not updating final result in database
+- fixed `on_abort`-handler not writing final result to database
+
 ## [2.1.1] - 2025-08-14
 
 ### Fixed

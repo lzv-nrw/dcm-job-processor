@@ -412,7 +412,11 @@ def test_process_timeout(
 
 
 def test_process_abort(
-    client, minimal_request_body, import_report, run_service, temp_folder
+    testing_config,
+    minimal_request_body,
+    import_report,
+    run_service,
+    temp_folder,
 ):
     """
     Test abort mechanism for jobs submitted to /process-POST endpoint.
@@ -431,6 +435,13 @@ def test_process_abort(
     def _delete():
         file.touch()
         return Response("OK", mimetype="text/plain", status=200)
+
+    # setup test
+    # * persistent SQLite to support multiprocessing-based jobs
+    testing_config.SQLITE_DB_FILE = Path(temp_folder / str(uuid4()))
+    # * initialize config/app (with extensions that initialize database)
+    config = testing_config()
+    client = app_factory(config, block=True).test_client()
 
     run_service(
         routes=[
@@ -457,6 +468,59 @@ def test_process_abort(
     assert report["progress"]["status"] == "aborted"
     assert "Aborting child" in str(report["log"])
     assert file.exists()
+
+    # check result is written to database
+    info = config.db.get_row("jobs", token).eval()
+    assert info["status"] == "aborted"
+    assert info.get("datetime_ended") is not None
+    assert info["report"]["progress"]["status"] == "aborted"
+
+
+def test_process_abort_non_running(testing_config, temp_folder):
+    """
+    Test abort written to database for jobs that did not run on request.
+    """
+
+    # setup test
+    # * persistent SQLite to support multiprocessing-based jobs
+    testing_config.SQLITE_DB_FILE = Path(temp_folder / str(uuid4()))
+    # * initialize config/app (with extensions that initialize database)
+    config = testing_config()
+    client = app_factory(config, block=True).test_client()
+
+    token = str(uuid4())
+
+    # write info to database
+    config.db.insert(
+        "jobs",
+        {
+            "token": token,
+            "status": "queued",
+            "report": {
+                "host": "",
+                "token": {
+                    "value": token,
+                    "expires": False,
+                },
+                "progress": {
+                    "status": "queued",
+                    "verbose": "Job queued.",
+                    "numeric": 0,
+                },
+            },
+        },
+    )
+
+    # run abort
+    assert client.delete(
+        f"/process?token={token}",
+        json={"origin": "pytest-runner", "reason": "test abort"}
+    ).status_code == 200
+
+    # check result is written to database
+    info = config.db.get_row("jobs", token).eval()
+    assert info["status"] == "aborted"
+    assert info.get("datetime_ended") is not None
 
 
 def test_process_multiple_stages_abort(
