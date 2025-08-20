@@ -6,7 +6,7 @@ from typing import Optional, Mapping
 import sys
 from uuid import uuid4
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, Response
 from data_plumber_http.decorators import flask_handler, flask_args, flask_json
 from dcm_common import LoggingContext as Context
 from dcm_common.util import now
@@ -68,6 +68,8 @@ class ProcessView(services.OrchestratedView):
                 interval=0.1,
                 timeout=config.PROCESS_TIMEOUT,
                 request_timeout=config.REQUEST_TIMEOUT,
+                max_retries=config.PROCESS_REQUEST_MAX_RETRIES,
+                retry_interval=config.PROCESS_REQUEST_RETRY_INTERVAL,
             )
         # configure abort-routes
         for stage, url, rule in (
@@ -97,50 +99,77 @@ class ProcessView(services.OrchestratedView):
         def process(
             job_config: ProcessorJobConfig,
             context: Optional[JobContext] = None,
-            callback_url: Optional[str] = None
+            token: Optional[str] = None,
+            callback_url: Optional[str] = None,
         ):
             """Handle request for processing job."""
-            # first, write dummy to database
-            token = Token(value=str(uuid4()))
-            self.config.db.insert(
-                "jobs",
-                {
-                    "token": token.value,
-                    "job_config_id": (
-                        None if context is None else context.job_config_id
-                    ),
-                    "user_triggered": (
-                        None if context is None else context.user_triggered
-                    ),
-                    "datetime_triggered": (
-                        None if context is None else context.datetime_triggered
-                    ),
-                    "trigger_type": (
-                        None
-                        if context is None
-                        else (
+            # either use provided token value or generate random token anew
+            _token = Token(value=token or str(uuid4()))
+
+            # first, attempt to write dummy to database
+            try:
+                self.config.db.insert(
+                    "jobs",
+                    {
+                        "token": _token.value,
+                        "job_config_id": (
+                            None if context is None else context.job_config_id
+                        ),
+                        "user_triggered": (
+                            None if context is None else context.user_triggered
+                        ),
+                        "datetime_triggered": (
                             None
-                            if context.trigger_type is None
-                            else context.trigger_type.value
-                        )
-                    ),
-                },
-            ).eval()
-
-            # then submit to orchestrator
-            self.orchestrator.submit(
-                JobConfig(
-                    request_body={
-                        "job_config": job_config.json,
-                        "context": {} if context is None else context.json,
-                        "callback_url": callback_url,
+                            if context is None
+                            else context.datetime_triggered
+                        ),
+                        "trigger_type": (
+                            None
+                            if context is None
+                            else (
+                                None
+                                if context.trigger_type is None
+                                else context.trigger_type.value
+                            )
+                        ),
                     },
-                    context=self.NAME,
-                ),
-                token,
-            )
+                ).eval()
+            except ValueError as exc_info:
+                # if failed, check whether this is due to the record
+                # already existing; if not, an unknown problem occured
+                if (
+                    self.config.db.get_row(
+                        "jobs", _token.value, ["token"]
+                    ).eval()
+                    is None
+                ):
+                    return Response(
+                        f"Submission rejected: {exc_info}",
+                        mimetype="text/plain",
+                        status=502,
+                    )
+                # TODO: the database should have a col for the JSON of the
+                # original request to allow checking whether the request was
+                # identical here (like in other dcm-microservices)
+            else:
+                # then submit to orchestrator
+                # contrary to other dcm-microservices, we do not expect to
+                # fail here, since we were able to write the new record to
+                # the database
+                # see also TODO in except above
+                self.orchestrator.submit(
+                    JobConfig(
+                        request_body={
+                            "job_config": job_config.json,
+                            "context": {} if context is None else context.json,
+                            "callback_url": callback_url,
+                        },
+                        context=self.NAME,
+                    ),
+                    token=_token,
+                )
 
-            return jsonify(token.json), 201
+            return jsonify(_token.json), 201
 
         def post_abort_hook(token: str) -> None:
             """

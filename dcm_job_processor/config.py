@@ -22,6 +22,12 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     # ------ PROCESS ------
     REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT") or 1)
     PROCESS_TIMEOUT = int(os.environ.get("PROCESS_TIMEOUT") or 30)
+    PROCESS_REQUEST_MAX_RETRIES = int(
+        os.environ.get("PROCESS_REQUEST_MAX_RETRIES", 1)
+    )
+    PROCESS_REQUEST_RETRY_INTERVAL = float(
+        os.environ.get("PROCESS_REQUEST_RETRY_INTERVAL", 1.0)
+    )
 
     IMPORT_MODULE_HOST = (
         os.environ.get("IMPORT_MODULE_HOST") or "http://localhost:8080"

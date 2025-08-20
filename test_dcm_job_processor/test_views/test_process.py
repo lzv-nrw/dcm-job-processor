@@ -620,3 +620,57 @@ def test_process_multiple_stages_abort(
     assert report["progress"]["status"] == "aborted"
     assert child_report["progress"]["status"] == "aborted"
     assert "Aborting child" in str(report["log"])
+
+
+def test_process_submit_existing(
+    testing_config, temp_folder, minimal_request_body
+):
+    """
+    Test behavior for a previously submitted job.
+    """
+
+    # setup test
+    # * persistent SQLite to support multiprocessing-based jobs
+    testing_config.SQLITE_DB_FILE = Path(temp_folder / str(uuid4()))
+    # * initialize config/app (with extensions that initialize database)
+    config = testing_config()
+    client = app_factory(config, block=True).test_client()
+
+    token = str(uuid4())
+
+    # write info to database
+    config.db.insert(
+        "jobs",
+        {
+            "token": token,
+            "status": "queued",
+            "report": {
+                "host": "",
+                "token": {
+                    "value": token,
+                    "expires": False,
+                },
+                "progress": {
+                    "status": "queued",
+                    "verbose": "Job queued.",
+                    "numeric": 0,
+                },
+            },
+        },
+    )
+
+    # submit
+    response = client.post(
+        "/process", json=minimal_request_body | {"token": token}
+    )
+    assert response.status_code == 201
+    assert response.json.get("value") == token
+
+    # orchestrator did not run any job
+    assert client.put("/orchestration?until-idle", json={}).status_code == 200
+    assert (
+        client.get("/orchestration").json.get("registry", {}).get("size") == 0
+    )
+
+    # check no additional entry in database
+    assert len(config.db.get_rows("jobs", token).eval()) == 1

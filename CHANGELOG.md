@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.3.0] - 2025-08-20
+
+### Changed
+
+- changed to running task-submission with retries and submission token
+
+### Added
+
+- added support for submission token
+
 ## [2.1.2] - 2025-08-18
 
 ### Fixed

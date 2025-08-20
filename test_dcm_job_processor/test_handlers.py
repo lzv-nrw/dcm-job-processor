@@ -134,6 +134,27 @@ def _process_handler():
                 },
                 Responses.GOOD.status,
             ),
+            (
+                {
+                    "process": {"from": "import_ies", "args": {}},
+                    "token": None
+                },
+                422,
+            ),
+            (
+                {
+                    "process": {"from": "import_ies", "args": {}},
+                    "token": "non-uuid"
+                },
+                422,
+            ),
+            (
+                {
+                    "process": {"from": "import_ies", "args": {}},
+                    "token": "37ee72d6-80ab-4dcd-a68d-f8d32766c80d"
+                },
+                Responses.GOOD.status,
+            ),
         ]
     ),
     ids=[f"stage {i+1}" for i in range(len(pytest_args))],

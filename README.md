@@ -75,6 +75,8 @@ Service-specific environment variables are
 * `DB_STRICT_SCHEMA_VERSION` [DEFAULT 0] whether to enforce matching database schema version with respect to currently installed `dcm-database`
 * `REQUEST_TIMEOUT` [DEFAULT 1] timeout duration for the submission of a request to a service in seconds
 * `PROCESS_TIMEOUT` [DEFAULT 30] timeout duration for the completion of a service job in seconds
+* `PROCESS_REQUEST_MAX_RETRIES` [DEFAULT 1] number of retries during task-submission and report-collection
+* `PROCESS_REQUEST_RETRY_INTERVAL` [DEFAULT 1] duration between retries of task-submission and report-collection in seconds
 * `IMPORT_MODULE_HOST` [DEFAULT http://localhost:8080] Import Module host address
 * `IP_BUILDER_HOST` [DEFAULT http://localhost:8081] IP Builder host address
 * `OBJECT_VALIDATOR_HOST` [DEFAULT http://localhost:8082] Object Validator host address

@@ -7,6 +7,7 @@ from typing import Optional
 from time import sleep
 from threading import Thread
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from dcm_common.orchestration import Children
 from dcm_common.services import APIResult
@@ -83,12 +84,16 @@ class Task:
 
         def _run_task():
             subtask_threads: dict[Stage, Thread] = {}
+            submission_token = str(uuid4())
             # initialize and run individual Tasks
             for stage, subtask in self.subtasks.items():
                 subtask_threads[stage] = Thread(
                     target=stage.value.adapter.run,
                     args=(
-                        subtask.base_request_body, subtask.target, subtask.info
+                        subtask.base_request_body
+                        | {"token": submission_token},
+                        subtask.target,
+                        subtask.info,
                     ),
                     kwargs={
                         "post_submission_hooks": (
@@ -98,13 +103,14 @@ class Task:
                                 abort_path=stage.value.abort_path,
                                 tag=f"{self.identifier}:{stage.value.identifier}",
                                 child_id=(
-                                    self.identifier, stage.value.identifier
+                                    self.identifier,
+                                    stage.value.identifier,
                                 ),
                                 post_link_hook=push,
-                                report_target_destination=task_report_target_destination
+                                report_target_destination=task_report_target_destination,
                             ),
                         )
-                    }
+                    },
                 )
                 subtask_threads[stage].start()
             # wait until completion

@@ -1,6 +1,7 @@
 """Input handlers for the 'DCM Job Processor'-app."""
 
 from data_plumber_http import Property, Object, String, Url
+from dcm_common.services.handlers import UUID
 
 from dcm_job_processor.models import TriggerType, JobContext, Stage, JobConfig
 
@@ -42,9 +43,10 @@ process_handler = Object(
                 "triggerType",
             ],
         ),
+        Property("token"): UUID(),
         Property("callbackUrl", name="callback_url"): Url(
             schemes=["http", "https"]
         ),
     },
-    accept_only=["process", "context", "callbackUrl"],
+    accept_only=["process", "context", "token", "callbackUrl"],
 ).assemble()
