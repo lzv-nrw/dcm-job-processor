@@ -9,7 +9,7 @@ from dcm_common.services import APIResult
 import dcm_ip_builder_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models.job_result import Record, RecordStageInfo
 from .interface import ServiceAdapter
 
 
@@ -37,6 +37,9 @@ class ValidationAdapter(ServiceAdapter):
     def _get_api_endpoint(self):
         pass
 
+    def _get_abort_endpoint(self):
+        pass
+
     def _build_request_body(self, base_request_body: dict, target: Any):
         pass
 
@@ -62,8 +65,8 @@ class ValidationAdapter(ServiceAdapter):
         return {
             Path(ip_path).name: Record(
                 False, stages={
-                    self._STAGE: APIResult(
-                        True, self.success(info), info.report
+                    self._STAGE: RecordStageInfo(
+                        True, self.success(info), None
                     )
                 }
             )

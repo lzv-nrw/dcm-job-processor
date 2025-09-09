@@ -4,10 +4,11 @@ This module defines the `VALIDATION_METADATA-ServiceAdapter`.
 
 from typing import Any
 
+from dcm_common.services import APIResult
 import dcm_ip_builder_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record, APIResult
+from dcm_job_processor.models.job_result import Record
 from .validation import ValidationAdapter
 
 
@@ -23,6 +24,9 @@ class ValidationMetadataAdapter(ValidationAdapter):
 
     def _get_api_endpoint(self):
         return self._api_client.validate
+
+    def _get_abort_endpoint(self):
+        return self._api_client.abort_validation
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         if target is not None:

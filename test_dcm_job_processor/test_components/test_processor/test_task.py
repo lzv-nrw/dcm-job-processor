@@ -6,8 +6,9 @@ from time import sleep, time
 
 import pytest
 from dcm_common.services import APIResult
+from dcm_common.orchestra import JobConfig, JobInfo, JobContext
 
-from dcm_job_processor.models import Stage
+from dcm_job_processor.models import Stage, Report, JobResult, Record
 from dcm_job_processor.components.processor.task import Task, SubTask
 
 
@@ -16,12 +17,22 @@ from dcm_job_processor.components.processor.task import Task, SubTask
 )
 def _initialize_stage_adapter_link(request):
     class FakeAdapter:
-        def run(self, base_request_body: dict, target, info: APIResult, post_submission_hooks=None):
+        def run(
+            self,
+            base_request_body: dict,
+            target,
+            info: APIResult,
+            post_submission_hooks=None,
+        ):
             info.report = {"start": time()}
             sleep(base_request_body["duration"])
             info.report["end"] = time()
             info.success = base_request_body["success"]
             info.completed = True
+
+        def get_abort_callback(self, token: str, log_id: str, origin: str):
+            return lambda info, context: None
+
     Stage.IMPORT_IES.value.adapter = FakeAdapter()
     Stage.IMPORT_IPS.value.adapter = FakeAdapter()
 
@@ -39,19 +50,30 @@ def wait_for_completion(task: Task, interval: float = 0.0001) -> None:
 
 
 @pytest.mark.parametrize(
-    "success",
-    [True, False],
-    ids=["success", "no-success"]
+    "success", [True, False], ids=["success", "no-success"]
 )
 def test_run_minimal(success):
     """Test method `run` for `Task` for minimal setup."""
     info = APIResult()
-    task = Task("some-id", Stage.IMPORT_IES, subtasks={
-        Stage.IMPORT_IES: SubTask(
-            {"duration": 0, "success": success}, info=info
-        )
-    })
-    task.run(0.001)
+    task = Task(
+        "some-id",
+        Stage.IMPORT_IES,
+        subtasks={
+            Stage.IMPORT_IES: SubTask(
+                {"duration": 0, "success": success}, info=info
+            )
+        },
+    )
+    task.run(
+        JobInfo(
+            JobConfig("", {}, {}),
+            report=Report(
+                children={}, data=JobResult(records={"some-id": Record()})
+            ),
+        ),
+        JobContext(lambda: None, lambda c: None, lambda t: None),
+        0.001,
+    )
     wait_for_completion(task)
     assert info.completed
     assert info.success is success
@@ -59,21 +81,34 @@ def test_run_minimal(success):
 
 
 @pytest.mark.parametrize(
-    "success",
-    [True, False],
-    ids=["success", "no-success"]
+    "success", [True, False], ids=["success", "no-success"]
 )
 def test_run_two_tasks(success):
     """Test method `run` for `Task` for a two-task setup."""
     info0 = APIResult()
     info1 = APIResult()
-    task = Task("some-id", Stage.IMPORT_IES, subtasks={
-        Stage.IMPORT_IES:
-            SubTask({"duration": 0.05, "success": True}, info=info0),
-        Stage.IMPORT_IPS:
-            SubTask({"duration": 0.05, "success": success}, info=info1),
-    })
-    task.run(0.001)
+    task = Task(
+        "some-id",
+        Stage.IMPORT_IES,
+        subtasks={
+            Stage.IMPORT_IES: SubTask(
+                {"duration": 0.05, "success": True}, info=info0
+            ),
+            Stage.IMPORT_IPS: SubTask(
+                {"duration": 0.05, "success": success}, info=info1
+            ),
+        },
+    )
+    task.run(
+        JobInfo(
+            JobConfig("", {}, {}),
+            report=Report(
+                children={}, data=JobResult(records={"some-id": Record()})
+            ),
+        ),
+        JobContext(lambda: None, lambda c: None, lambda t: None),
+        0.001,
+    )
     wait_for_completion(task)
     assert info0.completed and info1.completed
     assert info0.success and info1.success is success

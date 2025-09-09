@@ -73,6 +73,7 @@ pytest -v -s
 Service-specific environment variables are
 * `DB_LOAD_SCHEMA` [DEFAULT 0]: whether the database should be initialized with the database schema
 * `DB_STRICT_SCHEMA_VERSION` [DEFAULT 0] whether to enforce matching database schema version with respect to currently installed `dcm-database`
+* `REQUEST_POLL_INTERVAL` [DEFAULT 0] interval for result-polling of other services after requests are submitted
 * `REQUEST_TIMEOUT` [DEFAULT 1] timeout duration for the submission of a request to a service in seconds
 * `PROCESS_TIMEOUT` [DEFAULT 30] timeout duration for the completion of a service job in seconds
 * `PROCESS_REQUEST_MAX_RETRIES` [DEFAULT 1] number of retries during task-submission and report-collection

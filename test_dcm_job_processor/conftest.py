@@ -6,7 +6,6 @@ from dcm_common.services.tests import (
     tmp_setup, tmp_cleanup, wait_for_report, external_service, run_service
 )
 
-from dcm_job_processor import app_factory
 from dcm_job_processor.config import AppConfig
 
 
@@ -38,26 +37,17 @@ def _testing_config(temp_folder):
     # setup config-class
     class TestingConfig(AppConfig):
         TESTING = True
-        ORCHESTRATION_AT_STARTUP = False
-        ORCHESTRATION_DAEMON_INTERVAL = 0.001
-        ORCHESTRATION_ORCHESTRATOR_INTERVAL = 0.001
-        ORCHESTRATION_ABORT_NOTIFICATIONS_STARTUP_INTERVAL = 0.01
+        ORCHESTRA_DAEMON_INTERVAL = 0.01
+        ORCHESTRA_WORKER_INTERVAL = 0.01
+        ORCHESTRA_WORKER_ARGS = {"messages_interval": 0.01}
         DB_ADAPTER_STARTUP_IMMEDIATELY = True
         DB_ADAPTER_STARTUP_INTERVAL = 0.01
         DB_INIT_STARTUP_INTERVAL = 0.01
+        REQUEST_POLL_INTERVAL = 0.01
         DB_LOAD_SCHEMA = True
         SQLITE_DB_FILE = temp_folder / str(uuid4())
 
     return TestingConfig
-
-
-@pytest.fixture(name="client")
-def _client(testing_config):
-    """
-    Returns test_client.
-    """
-
-    return app_factory(testing_config(), block=True).test_client()
 
 
 @pytest.fixture(name="minimal_request_body")

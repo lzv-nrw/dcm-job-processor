@@ -89,7 +89,7 @@ def _report_fail(report):
 def _import_module(port, token, report, run_service):
     run_service(
         routes=[
-            ("/import/internal", lambda: (token, 201), ["POST"]),
+            ("/import/ips", lambda: (token, 201), ["POST"]),
             ("/report", lambda: (report, 200), ["GET"]),
         ],
         port=port
@@ -100,7 +100,7 @@ def _import_module(port, token, report, run_service):
 def _import_module_fail(port, token, report_fail, run_service):
     run_service(
         routes=[
-            ("/import/internal", lambda: (token, 201), ["POST"]),
+            ("/import/ips", lambda: (token, 201), ["POST"]),
             ("/report", lambda: (report_fail, 200), ["GET"]),
         ],
         port=port
@@ -159,7 +159,6 @@ def test_export_records(
     assert len(records) == 1
     ip_id = list(records)[0]
     assert Stage.IMPORT_IPS in records[ip_id].stages
-    assert records[ip_id].stages[Stage.IMPORT_IPS].report == info.report
 
 
 def test_export_records_fail(
@@ -171,7 +170,6 @@ def test_export_records_fail(
     assert len(records) == 1
     ip_id = list(records)[0]
     assert Stage.IMPORT_IPS in records[ip_id].stages
-    assert records[ip_id].stages[Stage.IMPORT_IPS].report == info.report
 
 
 def test_export_records_report_none(adapter: ImportIPsAdapter):

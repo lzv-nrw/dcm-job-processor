@@ -5,10 +5,9 @@ This module defines the `Processor` component of the Job Processor-app.
 from typing import Optional, Callable
 from time import sleep
 
-from dcm_common.orchestration import Children
+from dcm_common.orchestra import JobContext, JobInfo
 
-from dcm_job_processor.models.job_config import JobConfig
-from dcm_job_processor.models.job_result import JobResult
+from dcm_job_processor.models import JobConfig, Record
 from .process_manager import ProcessManager
 
 
@@ -20,9 +19,8 @@ class Processor:
 
     def process(
         self,
-        result: JobResult,
-        push,
-        children: Children,
+        info: JobInfo,
+        context: JobContext,
         config: JobConfig,
         interval: float = 0.1,
         on_update: Optional[Callable[[], None]] = None,
@@ -31,13 +29,23 @@ class Processor:
         Execute a job as defined in `config` while continuously updating
         `result` with `interval`.
         """
-        manager = ProcessManager(config, result)
 
-        current_result = result.json
+        if info.report.children is None:
+            info.report.children = {}
+
+        manager = ProcessManager(config, info)
+
+        current_result = info.report.json
+        tasks = []
         while manager.in_process():
             # start all pending Tasks
             for task in manager.queue:
-                task.run(interval, push, children)
+                if (
+                    task.identifier != "<bootstrap>"
+                    and task.identifier not in info.report.data.records
+                ):
+                    info.report.data.records[task.identifier] = Record()
+                tasks.append(task.run(info, context, interval))
 
             # wait
             sleep(interval)
@@ -45,9 +53,12 @@ class Processor:
             # find new Tasks
             manager.update(flush=True)
 
-            push()
-            new_result = result.json
+            context.push()
+            new_result = info.report.json
             if on_update and current_result != new_result:
-
                 on_update()
                 current_result = new_result
+
+        # block until all tasks are completed
+        for task in tasks:
+            task.join()

@@ -9,7 +9,7 @@ from dcm_common.services import APIResult
 import dcm_transfer_module_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models.job_result import Record, RecordStageInfo
 from .interface import ServiceAdapter
 
 
@@ -25,6 +25,9 @@ class TransferAdapter(ServiceAdapter):
 
     def _get_api_endpoint(self):
         return self._api_client.transfer
+
+    def _get_abort_endpoint(self):
+        return self._api_client.abort
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         if target is not None:
@@ -59,8 +62,8 @@ class TransferAdapter(ServiceAdapter):
         return {
             Path(sip_path).name: Record(
                 False, stages={
-                    self._STAGE: APIResult(
-                        True, self.success(info), info.report
+                    self._STAGE: RecordStageInfo(
+                        True, self.success(info), None
                     )
                 }
             )

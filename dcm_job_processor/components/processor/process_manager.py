@@ -4,9 +4,11 @@ app.
 """
 
 from typing import Optional
+import sys
 from dataclasses import dataclass
 
 from dcm_common.services import APIResult
+from dcm_common.orchestra import JobInfo
 
 from dcm_job_processor.models.job_config import Stage, JobConfig
 from dcm_job_processor.models.job_result import Record, JobResult
@@ -16,8 +18,10 @@ from .task import Task, SubTask
 @dataclass
 class _RecordInfo:
     """Stores information about a record that is being processed."""
+
     identifier: str
     record: Record
+    info: APIResult
     task: Task
     stage: Stage
 
@@ -33,24 +37,23 @@ class ProcessManager:
     config -- configuration information for a request
     result -- target where results are linked to
     """
+
     _SEQUENCE_COMMON = (
         Stage.VALIDATION,
         Stage.PREPARE_IP,
         Stage.BUILD_SIP,
         Stage.TRANSFER,
-        Stage.INGEST
+        Stage.INGEST,
     )
     _SEQUENCE_IES = (
-        Stage.IMPORT_IES, Stage.BUILD_IP,
+        Stage.IMPORT_IES,
+        Stage.BUILD_IP,
     ) + _SEQUENCE_COMMON
-    _SEQUENCE_IPS = (
-        Stage.IMPORT_IPS,
-    ) + _SEQUENCE_COMMON
+    _SEQUENCE_IPS = (Stage.IMPORT_IPS,) + _SEQUENCE_COMMON
 
-    def __init__(
-        self, config: JobConfig, result: Optional[JobResult] = None
-    ) -> None:
-        self.result = result or JobResult()
+    def __init__(self, config: JobConfig, info: JobInfo) -> None:
+        self.result: JobResult = info.report.data
+        self.child_reports = info.report.children
         self._config = config
         self._sequence = self._get_sequence()
 
@@ -64,7 +67,11 @@ class ProcessManager:
         # keys are given by 'id(record)' (or None for first task)
         self._state: dict[Optional[int], _RecordInfo] = {
             None: _RecordInfo(
-                "<bootstrap>", None, self._queue[0], self._sequence[0]
+                "<bootstrap>",
+                None,
+                self._root,
+                self._queue[0],
+                self._sequence[0],
             ),
         }
 
@@ -76,7 +83,8 @@ class ProcessManager:
         # select base on which to build actual sequence
         base_sequence = (
             self._SEQUENCE_IPS
-            if self._config.from_ == Stage.IMPORT_IPS else self._SEQUENCE_IES
+            if self._config.from_ == Stage.IMPORT_IPS
+            else self._SEQUENCE_IES
         )
 
         # construct sequence by searching base for first match then add
@@ -87,10 +95,11 @@ class ProcessManager:
             # having a child-stage of a meta-stage in
             # config.from_
             (
-                (i, s) for i, s in enumerate(base_sequence)
+                (i, s)
+                for i, s in enumerate(base_sequence)
                 if self._config.from_ in s.self_and_children()
             ),
-            (-1, None)
+            (-1, None),
         )
         if from_stage is None:
             return ()
@@ -102,10 +111,11 @@ class ProcessManager:
             # having a child-stage of a meta-stage in
             # config.to
             (
-                s for s in base_sequence
+                s
+                for s in base_sequence
                 if self._config.to in s.self_and_children()
             ),
-            base_sequence[-1]
+            base_sequence[-1],
         )
 
         # detect whether it is a single stage-sequence
@@ -116,7 +126,7 @@ class ProcessManager:
             return result
 
         # build remainder
-        for stage in base_sequence[from_index + 1:]:
+        for stage in base_sequence[from_index + 1 :]:
             # iterate remaining items
             result += (stage,)
             if stage in to_stage.self_and_children():
@@ -152,7 +162,7 @@ class ProcessManager:
         identifier: str,
         stage: Stage,
         target: Optional[dict] = None,
-        info: Optional[APIResult] = None
+        info: Optional[APIResult] = None,
     ) -> Task:
         """
         Returns `Task` with `SubTask`s as listed by `Stage.stages`.
@@ -163,13 +173,15 @@ class ProcessManager:
         """
         return Task(
             identifier,
-            stage, {
+            stage,
+            {
                 s: SubTask(
                     base_request_body=self._config.args.get(s, {}),
                     target=target,
-                    info=info
-                ) for s in stage.stages()
-            }
+                    info=info,
+                )
+                for s in stage.stages()
+            },
         )
 
     @property
@@ -208,24 +220,54 @@ class ProcessManager:
         if None in self._state:
             # find new records and link to internal tracking
             for identifier, record in (
-                self._sequence[0].value.adapter.export_records(self._root).items()
+                self._sequence[0]
+                .value.adapter.export_records(self._root)
+                .items()
             ):
+                # add new record to result
                 if identifier not in self.result.records:
+                    # link child-report id to record
+                    # this assumes that the bootstrap-stage appears only once
+                    # in the report-children
+                    if record.stages.get(self._sequence[0]) is not None:
+                        record.stages[self._sequence[0]].log_id = next(
+                            (
+                                c
+                                for c in (self.child_reports or {}).keys()
+                                if c.endswith(
+                                    self._sequence[0].value.identifier
+                                )
+                            ),
+                            None,
+                        )
+                    else:
+                        print(
+                            "ProcessManager was unable to link newly exported "
+                            + f"record '{identifier}' for stage "
+                            + f"'{self._sequence[0].value.identifier}' to a "
+                            + "child-report: stage does not exist in record. "
+                            + "This is probably an issue with a ServiceAdapter"
+                            + "'s export_records-implementation.",
+                            file=sys.stderr,
+                        )
+
+                    # link record to result
                     self.result.records[identifier] = record.make_picklable()
                     self._state[id(record)] = _RecordInfo(
                         identifier,
                         record,
+                        self._root,
                         self._state[None].task,
-                        self._sequence[0]
+                        self._sequence[0],
                     )
             # if completed, remove initial Task from tracking
             if self._root.completed:
                 # if not successful, append initial record
                 if not self._root.success and len(self.result.records) == 0:
                     self.result.records["<bootstrap>"] = Record(
-                        True, False, {
-                            self._sequence[0].value.identifier: self._root
-                        }
+                        True,
+                        False,
+                        {self._sequence[0].value.identifier: self._root},
                     )
                 del self._state[None]
 
@@ -253,10 +295,19 @@ class ProcessManager:
                         record_info.identifier,
                         next_stage,
                         first_child_or_self.value.adapter.export_target(
-                            record_info.record.stages[
-                                first_child_or_self.value.identifier
-                            ]
-                        )
+                            APIResult(
+                                report=(
+                                    None
+                                    if self.child_reports is None
+                                    else self.child_reports.get(
+                                        record_info.record.stages[
+                                            first_child_or_self.value.identifier
+                                        ].log_id
+                                    )
+                                )
+                            )
+                            # record_info.info
+                        ),
                     )
                 )
                 # link info objects to SubTasks in Task

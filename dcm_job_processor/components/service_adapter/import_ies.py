@@ -9,7 +9,7 @@ from dcm_common.services import APIResult
 import dcm_import_module_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models.job_result import Record, RecordStageInfo
 from .interface import ServiceAdapter
 
 
@@ -24,7 +24,10 @@ class ImportIEsAdapter(ServiceAdapter):
         return self._SDK.DefaultApi(client), self._SDK.ImportApi(client)
 
     def _get_api_endpoint(self):
-        return self._api_client.import_external
+        return self._api_client.import_ies
+
+    def _get_abort_endpoint(self):
+        return self._api_client.abort
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         return base_request_body
@@ -46,20 +49,11 @@ class ImportIEsAdapter(ServiceAdapter):
         if info.report is None:
             return {}
 
-        def _patch_report(report: dict, ie_id: str, ie: dict) -> dict:
-            """Returns a report with replaced data-field."""
-            _report = deepcopy(report)
-            _report["data"]["IEs"] = {
-                ie_id: ie
-            }
-            return _report
         return {
             ie.get("sourceIdentifier", ie_id): Record(
                 False, stages={
-                    self._STAGE: APIResult(
-                        True, ie["fetchedPayload"], _patch_report(
-                            info.report, ie.get("sourceIdentifier", ie_id), ie
-                        )
+                    self._STAGE: RecordStageInfo(
+                        True, ie["fetchedPayload"], None
                     )
                 }
             )

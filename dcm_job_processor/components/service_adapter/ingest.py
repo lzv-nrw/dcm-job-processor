@@ -8,7 +8,7 @@ from dcm_common.services import APIResult
 import dcm_backend_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models.job_result import Record, RecordStageInfo
 from .interface import ServiceAdapter
 
 
@@ -24,6 +24,9 @@ class IngestAdapter(ServiceAdapter):
 
     def _get_api_endpoint(self):
         return self._api_client.ingest
+
+    def _get_abort_endpoint(self):
+        return self._api_client.abort_ingest
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         if target is not None:
@@ -58,8 +61,8 @@ class IngestAdapter(ServiceAdapter):
         return {
             sip_path: Record(
                 False, stages={
-                    self._STAGE: APIResult(
-                        True, self.success(info), info.report
+                    self._STAGE: RecordStageInfo(
+                        True, self.success(info), None
                     )
                 }
             )

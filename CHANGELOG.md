@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.0] - 2025-09-09
+
+### Changed
+
+- migrated to dcm-common v4
+- migrated to import-module API v7
+- migrated to ip-builder API v6
+- migrated to object-validator API v6
+- migrated to preparation-module API v1
+- migrated to sip-builder API v3
+- migrated to transfer-module API v3
+- migrated to backend API v3
+- **Breaking:** migrated to API v2
+
 ## [2.3.0] - 2025-08-20
 
 ### Changed

@@ -154,7 +154,6 @@ def test_export_records(
     assert len(records) == 1
     ip_id = list(records)[0]
     assert Stage.BUILD_SIP in records[ip_id].stages
-    assert records[ip_id].stages[Stage.BUILD_SIP].report == info.report
 
 
 def test_export_records_fail(
@@ -166,7 +165,6 @@ def test_export_records_fail(
     assert len(records) == 1
     ip_id = list(records)[0]
     assert Stage.BUILD_SIP in records[ip_id].stages
-    assert records[ip_id].stages[Stage.BUILD_SIP].report == info.report
 
 
 def test_export_records_report_none(adapter: BuildSIPAdapter):

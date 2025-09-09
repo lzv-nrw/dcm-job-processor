@@ -5,19 +5,19 @@ Process View-class definition
 from typing import Optional, Mapping
 import sys
 from uuid import uuid4
+from threading import Lock
 
-from flask import Blueprint, jsonify, Response
+from flask import Blueprint, jsonify, Response, request
 from data_plumber_http.decorators import flask_handler, flask_args, flask_json
-from dcm_common import LoggingContext as Context
+from dcm_common import LoggingContext
 from dcm_common.util import now
-from dcm_common.orchestration import JobConfig, Job, Children
-from dcm_common.models import Token
+from dcm_common.orchestra import JobConfig, JobContext, JobInfo, Token
 from dcm_common import services
 
 from dcm_job_processor.config import AppConfig
 from dcm_job_processor.models import (
     TriggerType,
-    JobContext,
+    JobContext as ProcessorJobContext,
     Stage,
     JobConfig as ProcessorJobConfig,
     Report,
@@ -40,51 +40,19 @@ from dcm_job_processor.components.service_adapter import (
 
 class ProcessView(services.OrchestratedView):
     """View-class for job-processing."""
+
     NAME = "process"
 
-    def __init__(
-        self, config: AppConfig, *args, **kwargs
-    ) -> None:
+    def __init__(self, config: AppConfig, *args, **kwargs) -> None:
         super().__init__(config, *args, **kwargs)
 
         # initialize components
         self.processor = Processor()
 
-        # link adapter instances to Stages
-        for stage, type_, host in (
-            (Stage.IMPORT_IES.value, ImportIEsAdapter, config.IMPORT_MODULE_HOST),
-            (Stage.IMPORT_IPS.value, ImportIPsAdapter, config.IMPORT_MODULE_HOST),
-            (Stage.BUILD_IP.value, BuildIPAdapter, config.IP_BUILDER_HOST),
-            (Stage.VALIDATION.value, ValidationAdapter, ""),
-            (Stage.VALIDATION_METADATA.value, ValidationMetadataAdapter, config.IP_BUILDER_HOST),
-            (Stage.VALIDATION_PAYLOAD.value, ValidationPayloadAdapter, config.OBJECT_VALIDATOR_HOST),
-            (Stage.PREPARE_IP.value, PrepareIPAdapter, config.PREPARATION_MODULE_HOST),
-            (Stage.BUILD_SIP.value, BuildSIPAdapter, config.SIP_BUILDER_HOST),
-            (Stage.TRANSFER.value, TransferAdapter, config.TRANSFER_MODULE_HOST),
-            (Stage.INGEST.value, IngestAdapter, config.BACKEND_HOST),
-        ):
-            stage.adapter = type_(
-                host,
-                interval=0.1,
-                timeout=config.PROCESS_TIMEOUT,
-                request_timeout=config.REQUEST_TIMEOUT,
-                max_retries=config.PROCESS_REQUEST_MAX_RETRIES,
-                retry_interval=config.PROCESS_REQUEST_RETRY_INTERVAL,
-            )
-        # configure abort-routes
-        for stage, url, rule in (
-            (Stage.IMPORT_IES, config.IMPORT_MODULE_HOST, "/import"),
-            (Stage.IMPORT_IPS, config.IMPORT_MODULE_HOST, "/import"),
-            (Stage.BUILD_IP, config.IP_BUILDER_HOST, "/build"),
-            (Stage.VALIDATION_METADATA, config.IP_BUILDER_HOST, "/validate"),
-            (Stage.VALIDATION_PAYLOAD, config.OBJECT_VALIDATOR_HOST, "/validate"),
-            (Stage.PREPARE_IP, config.PREPARATION_MODULE_HOST, "/prepare"),
-            (Stage.BUILD_SIP, config.SIP_BUILDER_HOST, "/build"),
-            (Stage.TRANSFER, config.TRANSFER_MODULE_HOST, "/transfer"),
-            (Stage.INGEST, config.BACKEND_HOST, "/ingest"),
-        ):
-            stage.value.url = url
-            stage.value.abort_path = rule
+    def register_job_types(self):
+        self.config.worker_pool.register_job_type(
+            self.NAME, self.process, Report
+        )
 
     def configure_bp(self, bp: Blueprint, *args, **kwargs) -> None:
         @bp.route("/process", methods=["POST"])
@@ -98,7 +66,7 @@ class ProcessView(services.OrchestratedView):
         )
         def process(
             job_config: ProcessorJobConfig,
-            context: Optional[JobContext] = None,
+            context: Optional[ProcessorJobContext] = None,
             token: Optional[str] = None,
             callback_url: Optional[str] = None,
         ):
@@ -152,22 +120,34 @@ class ProcessView(services.OrchestratedView):
                 # original request to allow checking whether the request was
                 # identical here (like in other dcm-microservices)
             else:
-                # then submit to orchestrator
-                # contrary to other dcm-microservices, we do not expect to
-                # fail here, since we were able to write the new record to
-                # the database
-                # see also TODO in except above
-                self.orchestrator.submit(
-                    JobConfig(
-                        request_body={
-                            "job_config": job_config.json,
-                            "context": {} if context is None else context.json,
-                            "callback_url": callback_url,
-                        },
-                        context=self.NAME,
-                    ),
-                    token=_token,
-                )
+                # then submit to controller
+                try:
+                    self.config.controller.queue_push(
+                        _token.value,
+                        JobInfo(
+                            JobConfig(
+                                self.NAME,
+                                original_body=request.json,
+                                request_body={
+                                    "job_config": job_config.json,
+                                    "context": (
+                                        {} if context is None else context.json
+                                    ),
+                                    "callback_url": callback_url,
+                                },
+                            ),
+                            report=Report(
+                                host=request.host_url, args=request.json
+                            ),
+                        ),
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception as exc_info:
+                    return Response(
+                        f"Submission rejected: {exc_info}",
+                        mimetype="text/plain",
+                        status=500,
+                    )
 
             return jsonify(_token.json), 201
 
@@ -176,15 +156,37 @@ class ProcessView(services.OrchestratedView):
             Check if info-object in database is still marked as running.
             (This is only the case if the job did not run before abort.)
             """
-            info = self.config.db.get_row("jobs", token).eval()
-            if info is not None:
-                if info.get("status") in ["queued", "running"]:
+            info_db = self.config.db.get_row("jobs", token).eval()
+            if info_db is not None:
+                if info_db.get("status") in [None, "queued", "running"]:
+                    # registry should be the most up-to-date
+                    try:
+                        info_registry = self.config.controller.get_info(token)
+                    except ValueError as exc_info:
+                        print(
+                            "Error while aborting, could not fetch info from "
+                            + f"registry: {exc_info}",
+                            file=sys.stderr,
+                        )
+                        info_registry = {"report": info_db.get("report", {})}
+
+                    # handle potential edge-cases
+                    if info_registry.get("report") is None:
+                        info_registry["report"] = {}
+                    if info_registry["report"].get("progress") is None:
+                        info_registry["report"]["progress"] = {
+                            "verbose": "aborted",
+                            "numeric": 0,
+                        }
+                    info_registry["report"]["progress"]["status"] = "aborted"
+
                     self.config.db.update(
                         "jobs",
                         {
                             "token": token,
                             "status": "aborted",
-                            "datetime_ended": info.get("datetime_ended")
+                            "report": info_registry["report"],
+                            "datetime_ended": info_db.get("datetime_ended")
                             or now(True).isoformat(),
                         },
                     ).eval()
@@ -193,68 +195,80 @@ class ProcessView(services.OrchestratedView):
             bp, "/process", post_abort_hook=post_abort_hook
         )
 
-    def abort_hook(self, data: Report, push):
-        """Runs default abort-hook and update report in database."""
-        services.default_abort_hook(data, push)
-        self.config.db.update(
-            "jobs",
-            {
-                "token": data.token.value,
-                "status": data.progress.status.value,
-                "success": data.data.success,
-                "report": data.json,
-                "datetime_ended": now(True).isoformat(),
-            },
-        ).eval()
-
-    def get_job(self, config: JobConfig) -> Job:
-        return Job(
-            cmd=lambda push, data, children: self.process(
-                push,
-                data,
-                children,
-                job_config=ProcessorJobConfig.from_json(
-                    config.request_body["job_config"]
-                ),
-                context=JobContext.from_json(
-                    config.request_body.get("context", {})
-                ),
-            ),
-            hooks={
-                "startup": services.default_startup_hook,
-                "success": services.default_success_hook,
-                "fail": services.default_fail_hook,
-                "abort": self.abort_hook,
-                "completion": services.termination_callback_hook_factory(
-                    config.request_body.get("callback_url", None),
-                ),
-            },
-            name="Job Processor",
-        )
-
     def process(
         self,
-        push,
-        report: Report,
-        children: Children,
-        job_config: ProcessorJobConfig,
         context: JobContext,
+        info: JobInfo,
     ):
-        """
-        Job instructions for the '/process' endpoint.
+        """Job instructions for the '/process' endpoint."""
 
-        Orchestration standard-arguments:
-        push -- (orchestration-standard) push `report` to host process
-        report -- (orchestration-standard) common report-object shared
-                  via `push`
-        children -- (orchestration-standard) `ChildJob`-registry shared
-                    via `push`
+        job_config = ProcessorJobConfig.from_json(
+            info.config.request_body["job_config"]
+        )
+        job_execution_context = ProcessorJobContext.from_json(
+            info.config.request_body["context"]
+        )
+        info.report.log.set_default_origin("Job Processor")
 
-        Keyword arguments:
-        job_config -- job configuration details
-        context -- job execution context
-        """
+        # initialize service-adapters
+        # service-adapter are based on urllib3 and the connection-pooling used
+        # here is generally not compatible with multiprocessing (causes threads
+        # to get deadlocked); these adapters therefore need to be initialized
+        # in the same process they are used in
+        for stage, type_, host in (
+            (
+                Stage.IMPORT_IES.value,
+                ImportIEsAdapter,
+                self.config.IMPORT_MODULE_HOST,
+            ),
+            (
+                Stage.IMPORT_IPS.value,
+                ImportIPsAdapter,
+                self.config.IMPORT_MODULE_HOST,
+            ),
+            (
+                Stage.BUILD_IP.value,
+                BuildIPAdapter,
+                self.config.IP_BUILDER_HOST,
+            ),
+            (Stage.VALIDATION.value, ValidationAdapter, ""),
+            (
+                Stage.VALIDATION_METADATA.value,
+                ValidationMetadataAdapter,
+                self.config.IP_BUILDER_HOST,
+            ),
+            (
+                Stage.VALIDATION_PAYLOAD.value,
+                ValidationPayloadAdapter,
+                self.config.OBJECT_VALIDATOR_HOST,
+            ),
+            (
+                Stage.PREPARE_IP.value,
+                PrepareIPAdapter,
+                self.config.PREPARATION_MODULE_HOST,
+            ),
+            (
+                Stage.BUILD_SIP.value,
+                BuildSIPAdapter,
+                self.config.SIP_BUILDER_HOST,
+            ),
+            (
+                Stage.TRANSFER.value,
+                TransferAdapter,
+                self.config.TRANSFER_MODULE_HOST,
+            ),
+            (Stage.INGEST.value, IngestAdapter, self.config.BACKEND_HOST),
+        ):
+            stage.adapter = type_(
+                host,
+                interval=self.config.REQUEST_POLL_INTERVAL,
+                timeout=self.config.PROCESS_TIMEOUT,
+                request_timeout=self.config.REQUEST_TIMEOUT,
+                max_retries=self.config.PROCESS_REQUEST_MAX_RETRIES,
+                retry_interval=self.config.PROCESS_REQUEST_RETRY_INTERVAL,
+            )
 
+        # re-initialize database-adapter
         # since we are in a separate process, we need to use a new db-adapter
         # (new connections, to be specific) as pscopg-connections must not be
         # shared across processes
@@ -262,20 +276,42 @@ class ProcessView(services.OrchestratedView):
         if not self.config.db.pool.is_open:
             self.config.db.pool.init_pool()
 
-        report.progress.verbose = ("starting processor")
-        report.log.log(
-            Context.EVENT,
+        info.report.progress.verbose = "starting processor"
+        info.report.log.log(
+            LoggingContext.EVENT,
             body="Starting processor for job "
             + f"'{job_config.from_.value.identifier} > "
-            + f"{job_config.to.value.identifier if job_config.to else 'ingest'}'."
+            + f"{job_config.to.value.identifier if job_config.to else 'ingest'}'.",
         )
-        push()
+        context.push()
+
+        # patch context to work with threading
+        context_lock = Lock()
+        original_context = JobContext(
+            context.push, context.add_child, context.remove_child
+        )
+
+        def patched_push():
+            with context_lock:
+                original_context.push()
+
+        def patched_add_child(child):
+            with context_lock:
+                original_context.add_child(child)
+
+        def patched_remove_child(id_: str):
+            with context_lock:
+                original_context.remove_child(id_)
+
+        context = JobContext(
+            patched_push, patched_add_child, patched_remove_child
+        )
 
         # write initial record to database
         self.config.db.update(
             "jobs",
             {
-                "token": report.token.value,
+                "token": info.report.token.value,
                 "datetime_started": now(True).isoformat(),
             },
         ).eval()
@@ -285,47 +321,54 @@ class ProcessView(services.OrchestratedView):
             self.config.db.update(
                 "jobs",
                 {
-                    "token": report.token.value,
-                    "status": report.progress.status.value,
-                    "success": report.data.success,
-                    "report": report.json,
+                    "token": info.report.token.value,
+                    "status": info.report.progress.status.value,
+                    "success": info.report.data.success,
+                    "report": info.report.json,
                 }
                 | (row or {}),
             ).eval()
 
         # run job
-        self.processor.process(
-            report.data, push, children, job_config, on_update=on_update
-        )
+        self.processor.process(info, context, job_config, on_update=on_update)
 
-        report.progress.verbose = ("evaluate results")
-        push()
+        info.report.progress.verbose = "evaluate results"
+        context.push()
 
-        report.data.success = all(
-            record.success for record in report.data.records.values()
+        info.report.data.success = all(
+            record.success for record in info.report.data.records.values()
         )
-        report.log.log(
-            Context.INFO,
-            body=f"Job has been {'' if report.data.success else 'un'}successful."
+        info.report.log.log(
+            LoggingContext.INFO,
+            body=f"Job has been {'' if info.report.data.success else 'un'}successful.",
         )
-        push()
+        context.push()
 
         # finalize report and update records in database
-        if context.trigger_type is not TriggerType.TEST:
+        if job_execution_context.trigger_type is not TriggerType.TEST:
             # this part is not done in a single transaction to allow a
             # partial failure to happen
-            for report_id, record in report.data.records.items():
+            for report_id, record in info.report.data.records.items():
+                if report_id == "<bootstrap>":
+                    continue
                 # perform stage-specific post-processing
                 # (e.g. extract identifiers and store in record)
-                for stage_id, info in record.stages.items():
+                for stage_id, stage_info in record.stages.items():
                     Stage.from_string(
                         stage_id
-                    ).value.adapter.post_process_record(info, record)
+                    ).value.adapter.post_process_record(
+                        services.APIResult(
+                            stage_info.completed,
+                            stage_info.success,
+                            info.report.children.get(stage_info.log_id),
+                        ),
+                        record,
+                    )
 
                 t = self.config.db.insert(
                     "records",
                     {
-                        "job_token": report.token.value,
+                        "job_token": info.report.token.value,
                         "success": record.success,
                         "report_id": report_id,
                         "external_id": record.external_id,
@@ -340,9 +383,10 @@ class ProcessView(services.OrchestratedView):
                 if not t.success:
                     print(
                         f"Unable to create record '{report_id}' for token "
-                        + f"'{report.token.value}' ('{job_config.id_}'): "
+                        + f"'{info.report.token.value}' "
+                        + f"(config '{job_execution_context.job_config_id}'): "
                         + t.msg,
                         file=sys.stderr,
                     )
-        services.default_success_hook(report, lambda: None)
+        info.report.progress.complete()
         on_update({"datetime_ended": now(True).isoformat()})

@@ -23,6 +23,9 @@ class ValidationPayloadAdapter(ValidationAdapter):
     def _get_api_endpoint(self):
         return self._api_client.validate
 
+    def _get_abort_endpoint(self):
+        return self._api_client.abort
+
     def _build_request_body(self, base_request_body: dict, target: Any):
         if "validation" not in base_request_body:
             base_request_body["validation"] = {}

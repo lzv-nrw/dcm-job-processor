@@ -5,8 +5,8 @@ JobResult data-model definition
 from typing import Optional
 from dataclasses import dataclass, field
 
-from dcm_common.models import JSONObject, DataModel, Report as BaseReport
-from dcm_common.services import APIResult
+from dcm_common.models import JSONObject, DataModel
+from dcm_common.orchestra import Report as BaseReport
 
 from .job_config import Stage
 
@@ -19,6 +19,33 @@ class ServiceReport(BaseReport):
 
 
 @dataclass
+class RecordStageInfo(DataModel):
+    """
+    A `RecordStageInfo` contains information for a single stage of a
+    single record.
+    """
+    completed: bool = False
+    success: Optional[bool] = None
+    log_id: Optional[str] = None
+
+    @DataModel.serialization_handler("log_id", "logId")
+    @classmethod
+    def log_id_serialization(cls, value):
+        """Performs `log_id`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("log_id", "logId")
+    @classmethod
+    def log_id_deserialization(cls, value):
+        """Performs `log_id`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+
+@dataclass
 class Record(DataModel):
     """
     A `Record` corresponds to one object that is passed through the DCM-
@@ -27,7 +54,9 @@ class Record(DataModel):
     """
     completed: bool = False
     success: Optional[bool] = None
-    stages: dict[Stage | str, APIResult] = field(default_factory=lambda: {})
+    stages: dict[Stage | str, RecordStageInfo] = field(
+        default_factory=lambda: {}
+    )
     external_id: Optional[str] = None
     origin_system_id: Optional[str] = None
     sip_id: Optional[str] = None
@@ -48,7 +77,7 @@ class Record(DataModel):
     def stages_deserialization(cls, value):
         """Performs `stages`-deserialization."""
         return {
-            Stage.from_string(k): APIResult.from_json(v)
+            Stage.from_string(k): RecordStageInfo.from_json(v)
             for k, v in value.items()
         }
 

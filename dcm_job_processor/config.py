@@ -1,15 +1,29 @@
 """Configuration module for the 'Job Processor'-app."""
 
 import os
+from warnings import warn
 from pathlib import Path
 from importlib.metadata import version
 
 import yaml
 from dcm_common.services import OrchestratedAppConfig, DBConfig
+from dcm_common.orchestra import dillignore
 import dcm_database
 import dcm_job_processor_api
 
 
+if (
+    os.environ.get("ORCHESTRA_MP_METHOD", "spawn") == "fork"
+    and os.environ.get("DB_ADAPTER", "sqlite") == "sqlite"
+):
+    warn(
+        "The use of multiprocessing-method 'fork' along with sqlite3 may "
+        + "cause deadlocks in jobs. It is recommanded to either use the "
+        + "'spawn'-method or a postgres-database."
+    )
+
+
+@dillignore("controller", "worker_pool", "db")
 class AppConfig(OrchestratedAppConfig, DBConfig):
     """
     Configuration for the 'Job Processor'-app.
@@ -20,6 +34,9 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     FS_MOUNT_POINT = Path.cwd()
 
     # ------ PROCESS ------
+    REQUEST_POLL_INTERVAL = float(
+        os.environ.get("REQUEST_POLL_INTERVAL") or 1.0
+    )
     REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT") or 1)
     PROCESS_TIMEOUT = int(os.environ.get("PROCESS_TIMEOUT") or 30)
     PROCESS_REQUEST_MAX_RETRIES = int(

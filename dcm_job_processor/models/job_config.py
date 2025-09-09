@@ -16,8 +16,6 @@ class _Stage:
     identifier: str
     adapter: Optional["ServiceAdapter"] = None
     children: tuple["_Stage"] = field(default_factory=lambda: ())
-    url: Optional[str] = None  # base url for making abort-call
-    abort_path: Optional[str] = None
 
 
 class Stage(Enum):

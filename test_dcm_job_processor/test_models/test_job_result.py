@@ -5,11 +5,15 @@ import pickle
 
 import pytest
 from dcm_common.services import APIResult
-from dcm_common.models import Token
+from dcm_common.orchestra import Token
 from dcm_common.models.data_model import get_model_serialization_test
 
 from dcm_job_processor.models import (
-    Stage, ServiceReport, Record, JobResult
+    Stage,
+    ServiceReport,
+    RecordStageInfo,
+    Record,
+    JobResult,
 )
 
 
@@ -19,7 +23,7 @@ def test_service_report():
     data = {"field1": "value1"}
     children = {"child": {"child-field1": "child-value1"}}
     report = ServiceReport(
-        host="", token=Token(), args={}, data=data, children=children
+        host="", token=Token("0"), args={}, data=data, children=children
     )
 
     assert report.data == data
@@ -27,16 +31,20 @@ def test_service_report():
 
 
 test_service_report_json = get_model_serialization_test(
-    ServiceReport, (
+    ServiceReport,
+    (
         ((), {"host": ""}),
         (
-            (), {
-                "host": "", "token": Token(), "args": {},
+            (),
+            {
+                "host": "",
+                "token": Token("0"),
+                "args": {},
                 "data": {"field1": "value1"},
-                "children": {"child": {"child-field1": "child-value1"}}
-            }
+                "children": {"child": {"child-field1": "child-value1"}},
+            },
         ),
-    )
+    ),
 )
 
 
@@ -45,7 +53,7 @@ def test_service_report_empty_data():
     Test property `json` of class `ServiceReport` with empty data.
     """
 
-    report = ServiceReport(host="", token=Token(), args={})
+    report = ServiceReport(host="", token=Token("0"), args={})
 
     assert len(report.data) == 0
 
@@ -57,11 +65,20 @@ def test_service_report_empty_children():
     Test property `json` of class `ServiceReport` with empty children.
     """
 
-    report = ServiceReport(host="", token=Token(), args={})
+    report = ServiceReport(host="", token=Token("0"), args={})
 
     assert report.children is None
 
     assert "children" not in report.json
+
+
+test_record_stage_info_json = get_model_serialization_test(
+    RecordStageInfo,
+    (
+        ((), {}),
+        ((True, True, "0"), {}),
+    ),
+)
 
 
 def test_record():
@@ -77,25 +94,13 @@ def test_record_missing_success():
     assert record.success is None
 
 
-def test_record_with_reports():
-    """Test constructor of class `Record`."""
-    info = APIResult(
-        report=ServiceReport(host="", token=Token(), args={}).json
-    )
-    record = Record(
-        stages={
-            Stage.IMPORT_IES: info
-        }
-    )
-    assert Stage.IMPORT_IES in record.stages
-    assert record.stages[Stage.IMPORT_IES] == info
-
-
 def test_record_make_picklable(request):
     """Test method `make_picklable` of class `Record`."""
+
     # link un-picklable data to Stage.value.adapter
     def reset():
         Stage.IMPORT_IES.value.adapter = None
+
     request.addfinalizer(reset)
     Stage.IMPORT_IES.value.adapter = threading.Lock()
 
@@ -114,7 +119,7 @@ test_record_json = get_model_serialization_test(
         (
             (True,),
             {
-                "stages": {Stage.IMPORT_IES: APIResult()},
+                "stages": {Stage.IMPORT_IES: RecordStageInfo()},
                 "external_id": "a",
                 "origin_system_id": "b",
                 "sip_id": "c",
@@ -149,18 +154,18 @@ def test_job_result_with_records():
 
 
 test_job_result_json = get_model_serialization_test(
-    JobResult, (
+    JobResult,
+    (
         ((), {}),
         (
-            (True,), {
+            (True,),
+            {
                 "records": {
-                    "id": Record(
-                        stages={Stage.IMPORT_IES: APIResult()}
-                    )
+                    "id": Record(stages={Stage.IMPORT_IES: RecordStageInfo()})
                 }
-            }
+            },
         ),
-    )
+    ),
 )
 
 

@@ -81,7 +81,7 @@ def _report(url, token, request_body):
 def _import_module(port, token, report, run_service):
     run_service(
         routes=[
-            ("/import/external", lambda: (token, 201), ["POST"]),
+            ("/import/ies", lambda: (token, 201), ["POST"]),
             ("/report", lambda: (report, 200), ["GET"]),
         ],
         port=port
@@ -106,10 +106,6 @@ def test_export_records_minimal(
     ie_id = run_result.report["data"]["IEs"]["ie0"]["sourceIdentifier"]
     assert ie_id in records
     assert Stage.IMPORT_IES in records[ie_id].stages
-    assert (
-        records[ie_id].stages[Stage.IMPORT_IES].report["data"]["IEs"][ie_id]
-        == run_result.report["data"]["IEs"]["ie0"]
-    )
 
 
 def test_export_records_missing_source_identifier(
@@ -141,10 +137,6 @@ def test_export_records_two_records(
     assert len(records) == 2
     assert ie_id0 in records
     assert ie_id1 in records
-    assert (
-        records[ie_id0].stages[Stage.IMPORT_IES].report["data"]["IEs"]
-        != records[ie_id1].stages[Stage.IMPORT_IES].report["data"]["IEs"]
-    )
 
 
 @pytest.mark.parametrize(

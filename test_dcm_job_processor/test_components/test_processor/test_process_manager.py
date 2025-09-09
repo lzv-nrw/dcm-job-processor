@@ -6,10 +6,18 @@ from time import sleep
 
 import pytest
 from dcm_common.services import APIResult
+from dcm_common.orchestra import JobConfig, JobInfo, JobContext
 
-from dcm_job_processor.models import Stage, JobConfig, Record
+from dcm_job_processor.models import (
+    Stage,
+    JobConfig as ProcessorJobConfig,
+    Report,
+    JobResult,
+    Record,
+    RecordStageInfo,
+)
 from dcm_job_processor.components.processor.process_manager import (
-    ProcessManager
+    ProcessManager,
 )
 from dcm_job_processor.components.processor.task import Task
 
@@ -20,21 +28,33 @@ from dcm_job_processor.components.processor.task import Task
 def _initialize_stage_adapter_link(request):
     class FakeAdapter:
         """"""
+
         def __init__(self, stage: Stage, nrecords: int):
             self.stage = stage
             self.nrecords = nrecords
-        def run(self, base_request_body, target, info, post_submission_hooks=None):
+
+        def run(
+            self, base_request_body, target, info, post_submission_hooks=None
+        ):
             info.success = base_request_body.get("success", True)
+            info.completed = True
+
         def export_target(self, info: APIResult):
             return None
+
         def export_records(self, info: APIResult):
             if info.success:
                 return {
                     f"ie{i}": Record(
-                        False, stages={self.stage: None}
-                    ) for i in range(self.nrecords)
+                        False, stages={self.stage: RecordStageInfo()}
+                    )
+                    for i in range(self.nrecords)
                 }
             return {}
+
+        def get_abort_callback(self, token: str, log_id: str, origin: str):
+            return lambda info, context: None
+
     Stage.IMPORT_IES.value.adapter = FakeAdapter(Stage.IMPORT_IES, 1)
     Stage.BUILD_IP.value.adapter = FakeAdapter(Stage.BUILD_IP, 1)
     Stage.IMPORT_IPS.value.adapter = FakeAdapter(Stage.IMPORT_IPS, 2)
@@ -46,23 +66,36 @@ def _initialize_stage_adapter_link(request):
     request.addfinalizer(reset)
 
 
-def run_sequentially(task: Task, interval: float = 0.0001) -> None:
+def run_sequentially(task: Task, info=None, interval: float = 0.0001) -> None:
     """Run `task` sequentially."""
-    task.run(interval)
+    task.run(
+        info
+        or JobInfo(
+            JobConfig("", {}, {}),
+            report=Report(
+                children={},
+                data=JobResult(records={task.identifier: Record()}),
+            ),
+        ),
+        JobContext(lambda: None, lambda c: None, lambda t: None),
+        interval,
+    )
     while not task.completed:
         sleep(interval)
 
 
 @pytest.fixture(name="config")
 def _config():
-    return JobConfig(
+    return ProcessorJobConfig(
         from_=Stage.IMPORT_IES, to=Stage.VALIDATION, args={}
     )
 
 
 @pytest.fixture(name="pm")
-def _pm(config: JobConfig):
-    return ProcessManager(config)
+def _pm(config: ProcessorJobConfig):
+    return ProcessManager(
+        config, JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+    )
 
 
 @pytest.mark.parametrize(
@@ -71,38 +104,52 @@ def _pm(config: JobConfig):
         (Stage.BUILD_IP, Stage.BUILD_IP, (Stage.BUILD_IP,)),
         (Stage.BUILD_IP, Stage.VALIDATION, (Stage.BUILD_IP, Stage.VALIDATION)),
         (
-            Stage.BUILD_IP, Stage.VALIDATION_METADATA, (
-                Stage.BUILD_IP, Stage.VALIDATION_METADATA
-            )
+            Stage.BUILD_IP,
+            Stage.VALIDATION_METADATA,
+            (Stage.BUILD_IP, Stage.VALIDATION_METADATA),
         ),
         (
-            Stage.VALIDATION_METADATA, Stage.BUILD_SIP, (
-                Stage.VALIDATION_METADATA, Stage.PREPARE_IP, Stage.BUILD_SIP
-            )
+            Stage.VALIDATION_METADATA,
+            Stage.BUILD_SIP,
+            (Stage.VALIDATION_METADATA, Stage.PREPARE_IP, Stage.BUILD_SIP),
         ),
         (
-            Stage.VALIDATION_METADATA, Stage.VALIDATION_PAYLOAD, (
-                Stage.VALIDATION_METADATA,  # expected as in, unintended usage
-            )
+            Stage.VALIDATION_METADATA,
+            Stage.VALIDATION_PAYLOAD,
+            (Stage.VALIDATION_METADATA,),  # expected as in, unintended usage
         ),
         (
-            Stage.BUILD_IP, Stage.BUILD_SIP, (
-                Stage.BUILD_IP, Stage.VALIDATION, Stage.PREPARE_IP,
-                Stage.BUILD_SIP
-            )
+            Stage.BUILD_IP,
+            Stage.BUILD_SIP,
+            (
+                Stage.BUILD_IP,
+                Stage.VALIDATION,
+                Stage.PREPARE_IP,
+                Stage.BUILD_SIP,
+            ),
         ),
         (
-            Stage.BUILD_IP, None, (
-                Stage.BUILD_IP, Stage.VALIDATION, Stage.PREPARE_IP,
-                Stage.BUILD_SIP, Stage.TRANSFER, Stage.INGEST
-            )
+            Stage.BUILD_IP,
+            None,
+            (
+                Stage.BUILD_IP,
+                Stage.VALIDATION,
+                Stage.PREPARE_IP,
+                Stage.BUILD_SIP,
+                Stage.TRANSFER,
+                Stage.INGEST,
+            ),
         ),
     ],
     ids=[
-        "single-stage", "two-stage", "ending-on-substage",
-        "starting-with-substage", "substage-to-substage", "three-stage",
+        "single-stage",
+        "two-stage",
+        "ending-on-substage",
+        "starting-with-substage",
+        "substage-to-substage",
+        "three-stage",
         "full",
-    ]
+    ],
 )
 def test_sequence(from_, to, result):
     """
@@ -111,7 +158,7 @@ def test_sequence(from_, to, result):
     Test the generation of processing-sequence in class `ProcessManager`
     (based on given JobConfig).
     """
-    pm = ProcessManager(JobConfig(from_=from_, to=to))
+    pm = ProcessManager(ProcessorJobConfig(from_=from_, to=to), JobInfo(JobConfig("", {}, {}), report=Report(children={})))
     assert pm.sequence == result
 
 
@@ -124,13 +171,7 @@ def test_flush(pm: ProcessManager):
     assert len(pm.queue) == 0
 
 
-@pytest.mark.parametrize(
-    "flush",
-    [
-        True, False
-    ],
-    ids=["flush", "no-flush"]
-)
+@pytest.mark.parametrize("flush", [True, False], ids=["flush", "no-flush"])
 def test_update_flush(flush, pm: ProcessManager):
     """
     Test `flush`-argument of method `update` of class `ProcessManager`.
@@ -144,21 +185,19 @@ def test_update_minimal():
     """
     Test method `update` of class `ProcessManager` for minimal setup.
     """
-    pm = ProcessManager(JobConfig(Stage.IMPORT_IES, Stage.IMPORT_IES, {}))
+    pm = ProcessManager(
+        ProcessorJobConfig(Stage.IMPORT_IES, Stage.IMPORT_IES, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+    )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
     assert len(pm.queue) == 0
 
 
 @pytest.mark.parametrize(
-    "success",
-    [True, False],
-    ids=["success", "no-success"]
+    "success", [True, False], ids=["success", "no-success"]
 )
 @pytest.mark.parametrize(
-    "completed",
-    [True, False],
-    ids=["completed", "not-completed"]
+    "completed", [True, False], ids=["completed", "not-completed"]
 )
 def test_update_two_stages(completed, success):
     """
@@ -166,11 +205,11 @@ def test_update_two_stages(completed, success):
     setup.
     """
     pm = ProcessManager(
-        JobConfig(
-            Stage.IMPORT_IES, Stage.BUILD_IP, {
-                "import_ies": {"success": success}
-            }
-        )
+        ProcessorJobConfig(
+            Stage.IMPORT_IES,
+            Stage.BUILD_IP,
+            {"import_ies": {"success": success}},
+        ), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
     )
     if completed:
         run_sequentially(pm.queue[0])
@@ -187,7 +226,9 @@ def test_update_multiple_records():
     Test method `update` of class `ProcessManager` for a two-`Stage`
     setup generating multiple records.
     """
-    pm = ProcessManager(JobConfig(Stage.IMPORT_IPS, Stage.VALIDATION, {}))
+    pm = ProcessManager(
+        ProcessorJobConfig(Stage.IMPORT_IPS, Stage.VALIDATION, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+    )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
     assert len(pm.queue) == 2
@@ -198,7 +239,9 @@ def test_update_with_substages():
     Test method `update` of class `ProcessManager` for a `Stage` with
     multiple substages.
     """
-    pm = ProcessManager(JobConfig(Stage.BUILD_IP, Stage.VALIDATION, {}))
+    pm = ProcessManager(
+        ProcessorJobConfig(Stage.BUILD_IP, Stage.VALIDATION, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+    )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
     assert len(pm.queue) == 1
@@ -210,12 +253,25 @@ def test_update_with_substages():
 
 def test_in_process():
     """Test method `in_process` of class `ProcessManager`."""
-    pm = ProcessManager(JobConfig(Stage.IMPORT_IES, Stage.BUILD_IP, {}))
+    info = JobInfo(
+        JobConfig("", {}, {}),
+        report=Report(children={}, data=JobResult()),
+    )
+    pm = ProcessManager(
+        ProcessorJobConfig(Stage.IMPORT_IES, Stage.BUILD_IP),
+        info,
+    )
     assert pm.in_process()
-    run_sequentially(pm.queue[0])
+
+    t = pm.queue[0]
+    info.report.data.records[t.identifier] = Record()
+    run_sequentially(t, info)
     pm.update(flush=True)
     assert pm.in_process()
-    run_sequentially(pm.queue[0])
+
+    t = pm.queue[0]
+    info.report.data.records[t.identifier] = Record()
+    run_sequentially(t, info)
     pm.update(flush=True)
     assert not pm.in_process()
 
@@ -226,9 +282,11 @@ def test_in_process_failed_job():
     `Stage`.
     """
     pm = ProcessManager(
-        JobConfig(Stage.IMPORT_IES, Stage.BUILD_IP, {
-            "import_ies": {"success": False}
-        })
+        ProcessorJobConfig(
+            Stage.IMPORT_IES,
+            Stage.BUILD_IP,
+            {"import_ies": {"success": False}},
+        ), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
     )
     assert pm.in_process()
     run_sequentially(pm.queue[0])

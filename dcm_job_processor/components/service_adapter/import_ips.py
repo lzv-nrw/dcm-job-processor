@@ -9,7 +9,7 @@ from dcm_common.services import APIResult
 import dcm_import_module_sdk
 
 from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models.job_result import Record, RecordStageInfo
 from .interface import ServiceAdapter
 
 
@@ -24,7 +24,10 @@ class ImportIPsAdapter(ServiceAdapter):
         return self._SDK.DefaultApi(client), self._SDK.ImportApi(client)
 
     def _get_api_endpoint(self):
-        return self._api_client.import_internal
+        return self._api_client.import_ips
+
+    def _get_abort_endpoint(self):
+        return self._api_client.abort
 
     def _build_request_body(self, base_request_body: dict, target: Any):
         if target is not None:
@@ -49,20 +52,11 @@ class ImportIPsAdapter(ServiceAdapter):
         if info.report is None:
             return {}
 
-        def _patch_report(report: dict, ip_id: str, ip: dict) -> dict:
-            """Returns a report with replaced data-field."""
-            _report = deepcopy(report)
-            _report["data"]["IPs"] = {
-                ip_id: ip
-            }
-            return _report
         return {
             ip["path"]: Record(
                 False, stages={
-                    self._STAGE: APIResult(
-                        True, True, _patch_report(
-                            info.report, ip["path"], ip
-                        )
+                    self._STAGE: RecordStageInfo(
+                        True, True, None
                     )
                 }
             )
