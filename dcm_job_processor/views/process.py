@@ -287,25 +287,18 @@ class ProcessView(services.OrchestratedView):
 
         # patch context to work with threading
         context_lock = Lock()
-        original_context = JobContext(
-            context.push, context.add_child, context.remove_child
-        )
 
         def patched_push():
             with context_lock:
-                original_context.push()
+                context.push()
 
         def patched_add_child(child):
             with context_lock:
-                original_context.add_child(child)
+                context.add_child(child)
 
         def patched_remove_child(id_: str):
             with context_lock:
-                original_context.remove_child(id_)
-
-        context = JobContext(
-            patched_push, patched_add_child, patched_remove_child
-        )
+                context.remove_child(id_)
 
         # write initial record to database
         self.config.db.update(
@@ -330,7 +323,12 @@ class ProcessView(services.OrchestratedView):
             ).eval()
 
         # run job
-        self.processor.process(info, context, job_config, on_update=on_update)
+        self.processor.process(
+            info,
+            JobContext(patched_push, patched_add_child, patched_remove_child),
+            job_config,
+            on_update=on_update,
+        )
 
         info.report.progress.verbose = "evaluate results"
         context.push()

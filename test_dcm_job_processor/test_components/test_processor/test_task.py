@@ -17,6 +17,17 @@ from dcm_job_processor.components.processor.task import Task, SubTask
 )
 def _initialize_stage_adapter_link(request):
     class FakeAdapter:
+        url = None
+        interval = None
+        timeout = None
+        request_timeout = None
+        max_retries = None
+        retry_interval = None
+        retry_on = None
+
+        def __init__(self, *args, **kwargs):
+            pass
+
         def run(
             self,
             base_request_body: dict,
@@ -29,9 +40,6 @@ def _initialize_stage_adapter_link(request):
             info.report["end"] = time()
             info.success = base_request_body["success"]
             info.completed = True
-
-        def get_abort_callback(self, token: str, log_id: str, origin: str):
-            return lambda info, context: None
 
     Stage.IMPORT_IES.value.adapter = FakeAdapter()
     Stage.IMPORT_IPS.value.adapter = FakeAdapter()

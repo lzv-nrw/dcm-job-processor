@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 setup(
-    version="3.0.0",
+    version="3.0.1",
     name="dcm-job-processor",
     description="flask app implementing the DCM Job Processor API",
     author="LZV.nrw",

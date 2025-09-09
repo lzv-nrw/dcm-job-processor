@@ -27,9 +27,17 @@ from dcm_job_processor.components.processor.task import Task
 )
 def _initialize_stage_adapter_link(request):
     class FakeAdapter:
-        """"""
+        url = None
+        interval = None
+        timeout = None
+        request_timeout = None
+        max_retries = None
+        retry_interval = None
+        retry_on = None
 
-        def __init__(self, stage: Stage, nrecords: int):
+        def __init__(
+            self, *args, stage: Stage = None, nrecords: int = 0, **kwargs
+        ):
             self.stage = stage
             self.nrecords = nrecords
 
@@ -52,12 +60,15 @@ def _initialize_stage_adapter_link(request):
                 }
             return {}
 
-        def get_abort_callback(self, token: str, log_id: str, origin: str):
-            return lambda info, context: None
-
-    Stage.IMPORT_IES.value.adapter = FakeAdapter(Stage.IMPORT_IES, 1)
-    Stage.BUILD_IP.value.adapter = FakeAdapter(Stage.BUILD_IP, 1)
-    Stage.IMPORT_IPS.value.adapter = FakeAdapter(Stage.IMPORT_IPS, 2)
+    Stage.IMPORT_IES.value.adapter = FakeAdapter(
+        stage=Stage.IMPORT_IES, nrecords=1
+    )
+    Stage.BUILD_IP.value.adapter = FakeAdapter(
+        stage=Stage.BUILD_IP, nrecords=1
+    )
+    Stage.IMPORT_IPS.value.adapter = FakeAdapter(
+        stage=Stage.IMPORT_IPS, nrecords=2
+    )
 
     def reset():
         for stage in Stage:
@@ -158,7 +169,10 @@ def test_sequence(from_, to, result):
     Test the generation of processing-sequence in class `ProcessManager`
     (based on given JobConfig).
     """
-    pm = ProcessManager(ProcessorJobConfig(from_=from_, to=to), JobInfo(JobConfig("", {}, {}), report=Report(children={})))
+    pm = ProcessManager(
+        ProcessorJobConfig(from_=from_, to=to),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
+    )
     assert pm.sequence == result
 
 
@@ -186,7 +200,8 @@ def test_update_minimal():
     Test method `update` of class `ProcessManager` for minimal setup.
     """
     pm = ProcessManager(
-        ProcessorJobConfig(Stage.IMPORT_IES, Stage.IMPORT_IES, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+        ProcessorJobConfig(Stage.IMPORT_IES, Stage.IMPORT_IES, {}),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
     )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
@@ -209,7 +224,8 @@ def test_update_two_stages(completed, success):
             Stage.IMPORT_IES,
             Stage.BUILD_IP,
             {"import_ies": {"success": success}},
-        ), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+        ),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
     )
     if completed:
         run_sequentially(pm.queue[0])
@@ -227,7 +243,8 @@ def test_update_multiple_records():
     setup generating multiple records.
     """
     pm = ProcessManager(
-        ProcessorJobConfig(Stage.IMPORT_IPS, Stage.VALIDATION, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+        ProcessorJobConfig(Stage.IMPORT_IPS, Stage.VALIDATION, {}),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
     )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
@@ -240,7 +257,8 @@ def test_update_with_substages():
     multiple substages.
     """
     pm = ProcessManager(
-        ProcessorJobConfig(Stage.BUILD_IP, Stage.VALIDATION, {}), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+        ProcessorJobConfig(Stage.BUILD_IP, Stage.VALIDATION, {}),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
     )
     run_sequentially(pm.queue[0])
     pm.update(flush=True)
@@ -286,7 +304,8 @@ def test_in_process_failed_job():
             Stage.IMPORT_IES,
             Stage.BUILD_IP,
             {"import_ies": {"success": False}},
-        ), JobInfo(JobConfig("", {}, {}), report=Report(children={}))
+        ),
+        JobInfo(JobConfig("", {}, {}), report=Report(children={})),
     )
     assert pm.in_process()
     run_sequentially(pm.queue[0])

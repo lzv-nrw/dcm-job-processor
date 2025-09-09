@@ -9,6 +9,7 @@ from threading import Thread
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from dcm_common import LoggingContext
 from dcm_common.services import APIResult
 from dcm_common.orchestra.models import JobContext, ChildJob, JobInfo
 
@@ -78,12 +79,85 @@ class Task:
                     info.report.data.records[self.identifier].stages[
                         stage.value.identifier
                     ] = RecordStageInfo(log_id=log_id)
+
+                # define custom callback for abort to avoid pickling issues
+                # encountered in the ServiceAdapter-default (only in docker
+                # for some reason)
+                # (likely related to adapter-modules importing the Stage-enum)
+                def get_abort_callback(
+                    token,
+                    child_name,
+                    adapter_type,
+                    url,
+                    interval,
+                    timeout,
+                    request_timeout,
+                    max_retries,
+                    retry_interval,
+                    retry_on,
+                ):
+                    def child_abort(info, context):
+                        """
+                        Helper function for abort via `ServiceAdapter`.
+                        """
+                        # sdk uses urllib3 which does not work well with
+                        # dill (likely due to connection-pooling); create new
+                        # instance of adapter instead to avoid pickling
+                        adapter = adapter_type(
+                            url,
+                            interval,
+                            timeout,
+                            request_timeout,
+                            max_retries,
+                            retry_interval,
+                            retry_on,
+                        )
+                        # abort
+                        adapter.abort(
+                            None,
+                            args=(
+                                token,
+                                {
+                                    "origin": context.origin,
+                                    "reason": context.reason,
+                                },
+                            ),
+                        )
+                        # fetch latest report
+                        if info.report.children is None:
+                            info.report.children = {}
+                        try:
+                            info.report.children[child_name] = (
+                                adapter.get_info(token).report
+                            )
+                        # pylint: disable=broad-exception-caught
+                        except Exception as exc_info:
+                            info.report.log.log(
+                                LoggingContext.ERROR,
+                                origin="Job Processor",
+                                body=(
+                                    "Failed to fetch latest results from child "
+                                    + f"'{child_name}' at '{url}': {exc_info}"
+                                ),
+                            )
+
+                    return child_abort
+
                 context.add_child(
                     ChildJob(
                         child_token,
                         log_id,
-                        stage.value.adapter.get_abort_callback(
-                            child_token, log_id, "Job Processor"
+                        get_abort_callback(
+                            child_token,
+                            log_id,
+                            stage.value.adapter.__class__,
+                            stage.value.adapter.url,
+                            stage.value.adapter.interval,
+                            stage.value.adapter.timeout,
+                            stage.value.adapter.request_timeout,
+                            stage.value.adapter.max_retries,
+                            stage.value.adapter.retry_interval,
+                            stage.value.adapter.retry_on,
                         ),
                     )
                 )

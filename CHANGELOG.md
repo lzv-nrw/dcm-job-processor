@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.1] - 2025-09-09
+
+### Fixed
+
+- fixed issue with child abort-callbacks causing jobs to crash (in certain environments)
+
 ## [3.0.0] - 2025-09-09
 
 ### Changed
