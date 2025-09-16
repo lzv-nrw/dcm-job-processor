@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3] - 2025-09-16
+
+### Changed
+
+- update minimum version for import-module-sdk (hotfolder-update)
+- extended range of supported database-schema versions
+
 ## [3.0.1] - 2025-09-09
 
 ### Fixed

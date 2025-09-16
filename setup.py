@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 setup(
-    version="3.0.1",
+    version="3.0.3",
     name="dcm-job-processor",
     description="flask app implementing the DCM Job Processor API",
     author="LZV.nrw",
@@ -13,8 +13,8 @@ setup(
         "PyYAML==6.*",
         "data-plumber-http>=1.0.0,<2",
         "dcm-common[services, db, orchestra]>=4.0.0,<5",
-        "dcm-database>=1.0.0,<2",
-        "dcm-import-module-sdk>=7.0.0,<8",
+        "dcm-database>=1.0.0,<3",
+        "dcm-import-module-sdk>=7.1.0,<8",
         "dcm-ip-builder-sdk>=6.0.0,<7",
         "dcm-object-validator-sdk>=6.0.0,<7",
         "dcm-preparation-module-sdk>=1.0.0,<2",
