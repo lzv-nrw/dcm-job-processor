@@ -3,7 +3,6 @@ This module defines the `IMPORT_IPS-ServiceAdapter`.
 """
 
 from typing import Any
-from copy import deepcopy
 
 from dcm_common.services import APIResult
 import dcm_import_module_sdk
@@ -18,6 +17,10 @@ class ImportIPsAdapter(ServiceAdapter):
     _STAGE = Stage.IMPORT_IPS
     _SERVICE_NAME = "Import Module"
     _SDK = dcm_import_module_sdk
+
+    def __init__(self, *args, **kwargs) -> None:
+        self._exported_targets = []
+        super().__init__(*args, **kwargs)
 
     def _get_api_clients(self):
         client = self._SDK.ApiClient(self._SDK.Configuration(host=self._url))
@@ -40,13 +43,18 @@ class ImportIPsAdapter(ServiceAdapter):
         return info.report.get("data", {}).get("success", False)
 
     def export_target(self, info: APIResult) -> Any:
-        return next(
+        next_export = next(
             (
-                {"path": ip["path"]}
+                ip["path"]
                 for ip in info.report.get("data", {}).get("IPs", {}).values()
+                if ip["path"] not in self._exported_targets
             ),
             None
         )
+        if next_export is None:
+            return None
+        self._exported_targets.append(next_export)
+        return {"path": next_export}
 
     def export_records(self, info: APIResult) -> dict[str, Record]:
         if info.report is None:

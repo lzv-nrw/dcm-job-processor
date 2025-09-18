@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.4] - 2025-09-18
+
+### Fixed
+
+- fixed issue with service-adapters during import-stage always exporting the same target for the next stage
+
 ## [3.0.3] - 2025-09-16
 
 ### Changed
