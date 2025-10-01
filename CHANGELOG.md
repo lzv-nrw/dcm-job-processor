@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.5] - 2025-10-01
+
+### Changed
+
+- extended range of supported sdk-versions for backend and transfer-module
+
 ## [3.0.4] - 2025-09-18
 
 ### Fixed

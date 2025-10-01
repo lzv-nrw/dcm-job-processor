@@ -34,7 +34,7 @@ def _target():
 @pytest.fixture(name="request_body")
 def _request_body():
     return {
-        "transfer": {}
+        "transfer": {"destinationId": "destination-0"}
     }
 
 
