@@ -4,11 +4,9 @@ This flask app implements the 'Job Processor'-API (see
 `openapi.yaml` in the sibling-package `dcm_job_processor_api`).
 """
 
-from typing import Optional
 from time import time, sleep
 
 from flask import Flask
-from dcm_common.db import SQLAdapter
 from dcm_common.services import DefaultView, ReportView
 from dcm_common.services import extensions as common_extensions
 
@@ -19,7 +17,6 @@ from dcm_job_processor import extensions
 
 def app_factory(
     config: AppConfig,
-    db: Optional[SQLAdapter] = None,
     as_process: bool = False,
     block: bool = False,
 ):
@@ -27,8 +24,6 @@ def app_factory(
     Returns a flask-app-object.
 
     config -- app config derived from `AppConfig`
-    db -- database adapter
-          (default None; uses `config.db`)
     as_process -- whether the app is intended to be run as process via
                   `app.run`; if `True`, startup tasks like starting
                   orchestration-daemon are prepended to `app.run`
@@ -58,7 +53,7 @@ def app_factory(
     app.extensions["db_init"] = extensions.db_init_loader(
         app,
         config,
-        db or config.db,
+        config.db,
         as_process,
         [
             common_extensions.ExtensionEventRequirement(

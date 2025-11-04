@@ -5,18 +5,13 @@ Test module for the `ServiceAdapter` associated with `Stage.PREPARE_IP`.
 import pytest
 from dcm_common.services import APIResult
 
-from dcm_job_processor.models import Stage
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
 from dcm_job_processor.components.service_adapter import PrepareIPAdapter
 
 
-@pytest.fixture(name="port")
-def _port():
-    return 8080
-
-
 @pytest.fixture(name="url")
-def _url(port):
-    return f"http://localhost:{port}"
+def _url():
+    return "http://localhost:8080"
 
 
 @pytest.fixture(name="adapter")
@@ -24,177 +19,185 @@ def _adapter(url):
     return PrepareIPAdapter(url)
 
 
-@pytest.fixture(name="target")
-def _target():
-    return {
-        "path": "ip/59438ebf-75e0-4345-8d6b-132a57e1e4f5"
-    }
-
-
-@pytest.fixture(name="request_body")
-def _request_body():
-    return {
-        "preparation": {},
-    }
-
-
-@pytest.fixture(name="token")
-def _token():
-    return {
-        "value": "eb7948a58594df3400696b6ce12013b0e26348ef27e",
-        "expires": True,
-        "expires_at": "2024-08-09T13:15:10+00:00"
-    }
+@pytest.fixture(name="artifact")
+def _artifact():
+    return "pip/028c2879-0284-4d39-9f1c-db5eb174535e"
 
 
 @pytest.fixture(name="report")
-def _report(url, token, request_body):
+def _report(url, artifact):
     return {
         "host": url,
-        "token": token,
-        "args": request_body,
+        "token": {
+            "value": "eb7948a58594df3400696b6ce12013b0e26348ef27e",
+            "expires": True,
+            "expires_at": "2024-08-09T13:15:10+00:00",
+        },
+        "args": {
+            "preparation": {
+                "target": {"path": "ie/59438ebf-75e0-4345-8d6b-132a57e1e4f5"},
+            },
+        },
         "progress": {
             "status": "completed",
             "verbose": "Job terminated normally.",
-            "numeric": 100
+            "numeric": 100,
         },
         "log": {
             "EVENT": [
                 {
                     "datetime": "2024-08-09T12:15:10+00:00",
                     "origin": "Preparation Module",
-                    "body": "Some event"
+                    "body": "Some event",
                 },
             ]
         },
         "data": {
-            "path": "pip/028c2879-0284-4d39-9f1c-db5eb174535e",
             "success": True,
-        }
+            "path": artifact,
+        },
     }
 
 
-@pytest.fixture(name="report_fail")
-def _report_fail(report):
-    report["data"]["success"] = False
-    return report
+@pytest.mark.parametrize(
+    "success", [True, False], ids=["success", "no-success"]
+)
+def test_success(success, adapter: PrepareIPAdapter, report):
+    """Test method `PrepareIPAdapter.success`."""
+    report["data"]["success"] = success
+    assert adapter.success(APIResult(report=report)) is success
 
 
-@pytest.fixture(name="preparation_module")
-def _preparation_module(port, token, report, run_service):
-    run_service(
-        routes=[
-            ("/prepare", lambda: (token, 201), ["POST"]),
-            ("/report", lambda: (report, 200), ["GET"]),
-        ],
-        port=port
-    )
-
-
-@pytest.fixture(name="preparation_module_fail")
-def _preparation_module_fail(port, token, report_fail, run_service):
-    run_service(
-        routes=[
-            ("/prepare", lambda: (token, 201), ["POST"]),
-            ("/report", lambda: (report_fail, 200), ["GET"]),
-        ],
-        port=port
-    )
-
-
-def fix_report_args(info: APIResult, target) -> None:
-    """Fixes args in report (missing due to faked service)"""
-    info.report["args"]["preparation"]["target"] = target
-
-
-def test_run(
-    adapter: PrepareIPAdapter, request_body, target, report, preparation_module
+@pytest.mark.parametrize(
+    ("job_config", "record", "expected_request_body", "error"),
+    [
+        (JobConfig(""), Record(""), None, True),
+        (
+            JobConfig("", _data_processing={}),
+            Record(
+                "",
+                stages={
+                    Stage.BUILD_IP: RecordStageInfo(artifact="a"),
+                },
+            ),
+            {"preparation": {"target": {"path": "a"}}},
+            False,
+        ),
+        (
+            JobConfig("", _data_processing={}),
+            Record(
+                "",
+                stages={
+                    Stage.IMPORT_IPS: RecordStageInfo(artifact="a"),
+                },
+            ),
+            {"preparation": {"target": {"path": "a"}}},
+            False,
+        ),
+        (
+            JobConfig(
+                "",
+                _data_processing={
+                    "preparation": {
+                        "rightsOperations": ["b"],
+                        "preservationOperations": ["c"],
+                        "sigPropOperations": ["d"],
+                    },
+                },
+            ),
+            Record(
+                "",
+                stages={
+                    Stage.IMPORT_IPS: RecordStageInfo(artifact="a"),
+                },
+            ),
+            {
+                "preparation": {
+                    "target": {"path": "a"},
+                    "bagInfoOperations": ["b", "c"],
+                    "sigPropOperations": ["d"],
+                }
+            },
+            False,
+        ),
+        (
+            JobConfig(
+                "",
+                _data_processing={},
+            ),
+            Record(
+                "",
+                stages={
+                    Stage.IMPORT_IPS: RecordStageInfo(artifact="a"),
+                },
+                bitstream=True,
+            ),
+            {
+                "preparation": {
+                    "target": {"path": "a"},
+                    "bagInfoOperations": [
+                        {
+                            "type": "set",
+                            "targetField": "Preservation-Level",
+                            "value": "Bitstream",
+                        }
+                    ],
+                }
+            },
+            False,
+        ),
+        (
+            JobConfig("", _data_processing={}),
+            Record(
+                "",
+                stages={
+                    Stage.BUILD_IP: RecordStageInfo(artifact="a"),
+                    Stage.PREPARE_IP: RecordStageInfo(token="c"),
+                },
+            ),
+            {
+                "preparation": {"target": {"path": "a"}},
+                "token": "c",
+            },
+            False,
+        ),
+    ],
+    ids=[
+        "target-missing",
+        "target-from-build-ip",
+        "target-from-import-ips",
+        "with-operations",
+        "with-operations",
+        "token",
+    ],
+)
+def test_build_request_body_simple(
+    job_config, record, expected_request_body, error, adapter: PrepareIPAdapter
 ):
-    """Test method `run` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    assert info.completed
-    assert info.success
-    assert info.report == report
+    """Test method `PrepareIPAdapter.build_request_body`."""
+    if error:
+        with pytest.raises(ValueError) as exc_info:
+            adapter.build_request_body(job_config, record)
+        print(exc_info.value)
+    else:
+        assert (
+            adapter.build_request_body(job_config, record)
+            == expected_request_body
+        )
 
 
-def test_run_fail(
-    adapter: PrepareIPAdapter,
-    request_body,
-    target,
-    report_fail,
-    preparation_module_fail,
-):
-    """Test method `run` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    assert info.completed
-    assert not info.success
-    assert info.report == report_fail
+def test_eval_ok(adapter: PrepareIPAdapter, report, artifact):
+    """Test method `PrepareIPAdapter.eval`."""
+    record = Record("", stages={Stage.PREPARE_IP: RecordStageInfo()})
+    adapter.eval(record, APIResult(report=report))
+    assert record.stages[Stage.PREPARE_IP].success
+    assert record.stages[Stage.PREPARE_IP].artifact == artifact
 
 
-def test_success(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module
-):
-    """Test property `success` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    assert adapter.success(info)
-
-
-def test_success_fail(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module_fail
-):
-    """Test property `success` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    assert not adapter.success(info)
-
-
-def test_export_records(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module
-):
-    """Test method `export_records` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    records = adapter.export_records(info)
-    assert len(records) == 1
-    ip_id = list(records)[0]
-    assert Stage.PREPARE_IP in records[ip_id].stages
-
-
-def test_export_records_fail(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module_fail
-):
-    """Test method `export_records` of `PrepareIPAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    records = adapter.export_records(info)
-    assert len(records) == 1
-    ip_id = list(records)[0]
-    assert Stage.PREPARE_IP in records[ip_id].stages
-
-
-def test_export_records_report_none(adapter: PrepareIPAdapter):
-    """
-    Test method `export_records` of `PrepareIPAdapter` for no report.
-    """
-    assert adapter.export_records(APIResult()) == {}
-
-
-def test_export_target(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module
-):
-    """
-    Test method `export_target` of `PrepareIPAdapter`.
-    """
-    adapter.run(request_body, target, info := APIResult())
-    target = adapter.export_target(info)
-    assert target["path"] == info.report["data"]["path"]
-
-
-def test_export_target_fail(
-    adapter: PrepareIPAdapter, request_body, target, preparation_module_fail
-):
-    """
-    Test method `export_target` of `PrepareIPAdapter`.
-    """
-    adapter.run(request_body, target, info := APIResult())
-    target = adapter.export_target(info)
-    assert target is None
+def test_eval_bad(adapter: PrepareIPAdapter, report):
+    """Test method `PrepareIPAdapter.eval`."""
+    report["data"] = {}
+    record = Record("", stages={Stage.PREPARE_IP: RecordStageInfo()})
+    adapter.eval(record, APIResult(report=report))
+    assert record.stages[Stage.PREPARE_IP].success is False
+    assert record.stages[Stage.PREPARE_IP].artifact is None

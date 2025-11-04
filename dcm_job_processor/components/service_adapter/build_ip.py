@@ -2,19 +2,16 @@
 This module defines the `BUILD_IP-ServiceAdapter`.
 """
 
-from typing import Any
-from pathlib import Path
-
 from dcm_common.services import APIResult
 import dcm_ip_builder_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record, RecordStageInfo
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
 from .interface import ServiceAdapter
 
 
 class BuildIPAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `BUILD_IP`-`Stage`."""
+
     _STAGE = Stage.BUILD_IP
     _SERVICE_NAME = "IP Builder"
     _SDK = dcm_ip_builder_sdk
@@ -29,38 +26,63 @@ class BuildIPAdapter(ServiceAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort_build
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if target is not None:
-            if "build" not in base_request_body:
-                base_request_body["build"] = {}
-            base_request_body["build"]["target"] = target
-        return base_request_body
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        build_ip = {"build": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            build_ip["token"] = record.stages[self.stage].token
 
-    def success(self, info: APIResult) -> bool:
-        return info.report.get("data", {}).get("success", False)
-
-    def export_target(self, info: APIResult) -> Any:
-        try:
-            if info.report["data"]["success"]:
-                return {"path": info.report["data"]["path"]}
-        except KeyError:
-            pass
-        return None
-
-    def export_records(self, info: APIResult) -> dict[str, Record]:
-        if info.report is None:
-            return {}
-
-        try:
-            ip_path = info.report["data"]["path"]
-        except KeyError:
-            return {}
-        return {
-            Path(ip_path).name: Record(
-                False, stages={
-                    self._STAGE: RecordStageInfo(
-                        True, self.success(info), None
-                    )
-                }
+        if Stage.IMPORT_IES in record.stages:
+            build_ip["build"]["target"] = {
+                "path": record.stages[Stage.IMPORT_IES].artifact
+            }
+        else:
+            raise ValueError(
+                f"Missing target IP to build for record '{record.id_}'."
             )
-        }
+
+        build_ip["build"]["validate"] = False
+
+        type_ = job_config.data_processing.get("mapping", {}).get("type")
+
+        if type_ == "plugin":
+            build_ip["build"]["mappingPlugin"] = (
+                job_config.data_processing.get("mapping", {}).get("data")
+            )
+
+        if type_ == "python":
+            build_ip["build"]["mappingPlugin"] = {
+                "plugin": "generic-mapper-plugin-string",
+                "args": {
+                    "mapper": {
+                        "string": (
+                            job_config.data_processing.get("mapping", {})
+                            .get("data", {})
+                            .get("contents")
+                        ),
+                        "args": {},
+                    }
+                },
+            }
+
+        if type_ == "xslt":
+            build_ip["build"]["mappingPlugin"] = {
+                "plugin": "xslt-plugin",
+                "args": {
+                    "xslt": (
+                        job_config.data_processing.get("mapping", {})
+                        .get("data", {})
+                        .get("contents")
+                    )
+                },
+            }
+
+        return build_ip
+
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)
+        record.stages[self.stage].artifact = api_result.report.get(
+            "data", {}
+        ).get("path")

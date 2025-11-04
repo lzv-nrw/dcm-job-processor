@@ -2,19 +2,16 @@
 This module defines the `BUILD_SIP-ServiceAdapter`.
 """
 
-from typing import Any
-from pathlib import Path
-
 from dcm_common.services import APIResult
 import dcm_sip_builder_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record, RecordStageInfo
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
 from .interface import ServiceAdapter
 
 
 class BuildSIPAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `BUILD_SIP`-`Stage`."""
+
     _STAGE = Stage.BUILD_SIP
     _SERVICE_NAME = "SIP Builder"
     _SDK = dcm_sip_builder_sdk
@@ -29,38 +26,35 @@ class BuildSIPAdapter(ServiceAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if target is not None:
-            if "build" not in base_request_body:
-                base_request_body["build"] = {}
-            base_request_body["build"]["target"] = target
-        return base_request_body
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        build_sip = {"build": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            build_sip["token"] = record.stages[self.stage].token
 
-    def success(self, info: APIResult) -> bool:
-        return info.report.get("data", {}).get("success", False)
-
-    def export_target(self, info: APIResult) -> Any:
-        try:
-            if info.report["data"]["success"]:
-                return {"path": info.report["data"]["path"]}
-        except KeyError:
-            pass
-        return None
-
-    def export_records(self, info: APIResult) -> dict[str, Record]:
-        if info.report is None:
-            return {}
-
-        try:
-            sip_path = info.report["data"]["path"]
-        except KeyError:
-            return {}
-        return {
-            Path(sip_path).name: Record(
-                False, stages={
-                    self._STAGE: RecordStageInfo(
-                        True, self.success(info), None
-                    )
-                }
+        if Stage.PREPARE_IP in record.stages:
+            build_sip["build"]["target"] = {
+                "path": record.stages[Stage.PREPARE_IP].artifact
+            }
+        elif Stage.BUILD_IP in record.stages:  # after import_ies
+            build_sip["build"]["target"] = {
+                "path": record.stages[Stage.BUILD_IP].artifact
+            }
+        elif Stage.IMPORT_IPS in record.stages:
+            build_sip["build"]["target"] = {
+                "path": record.stages[Stage.IMPORT_IPS].artifact
+            }
+        else:
+            raise ValueError(
+                f"Missing target SIP to build for record '{record.id_}'."
             )
-        }
+
+        return build_sip
+
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)
+        record.stages[self.stage].artifact = api_result.report.get(
+            "data", {}
+        ).get("path")

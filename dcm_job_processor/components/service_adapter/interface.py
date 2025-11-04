@@ -3,21 +3,19 @@ This module extends the `dcm-common`-`ServiceAdapter`-interface for the
 Job Processor-app.
 """
 
-from typing import Any
 import abc
 
 from dcm_common.services import APIResult, ServiceAdapter as ServiceAdapter_
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
+from dcm_job_processor.models import Stage, Record, JobConfig
 
 
 class ServiceAdapter(ServiceAdapter_, metaclass=abc.ABCMeta):
     """
-    Extended `ServiceAdapter`-interface adding requirements for
-    * `export_target` and
-    * `export_records`,
-    as well as the attribute `_STAGE`.
+    Extended `ServiceAdapter`-interface which adds methods
+    * `build_request_body` and
+    * `eval`,
+    as well as the attribute `stage`.
     """
 
     @classmethod
@@ -27,14 +25,17 @@ class ServiceAdapter(ServiceAdapter_, metaclass=abc.ABCMeta):
             and hasattr(subclass, "_get_api_endpoint")
             and hasattr(subclass, "_build_request_body")
             and hasattr(subclass, "success")
-            and hasattr(subclass, "export_target")
-            and hasattr(subclass, "export_records")
+            and hasattr(subclass, "build_request_body")
+            and hasattr(subclass, "continue_")
+            and hasattr(subclass, "eval")
+            and hasattr(subclass, "stage")
             and callable(subclass._get_api_clients)
             and callable(subclass._get_api_endpoint)
             and callable(subclass._build_request_body)
             and callable(subclass.success)
-            and callable(subclass.export_target)
-            and callable(subclass.export_records)
+            and callable(subclass.build_request_body)
+            and callable(subclass.continue_)
+            and callable(subclass.eval)
             or NotImplemented
         )
 
@@ -45,41 +46,27 @@ class ServiceAdapter(ServiceAdapter_, metaclass=abc.ABCMeta):
         """Returns `Stage` this adapter is associated with."""
         return self._STAGE
 
+    def success(self, info: APIResult) -> bool:
+        return info.report.get("data", {}).get("success", False)
+
+    def _build_request_body(self, base_request_body, target):
+        return base_request_body
+
     @abc.abstractmethod
-    def _get_api_clients(self) -> tuple[Any, Any]:
-        """
-        Returns a tuple of default- and submission-related API clients.
-        """
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
         raise NotImplementedError(
-            f"{self.__class__.__name__} missing implementation of "
-            + "`_get_api_clients`."
+            f"{self.__class__.__name__} is missing its implementation of "
+            + "`build_request_body`."
         )
 
     @abc.abstractmethod
-    def export_target(self, info: APIResult) -> Any:
-        """
-        Returns the first valid target that arises from the given
-        `APIResult` or `None`.
-        """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} missing implementation of "
-            + "`export_target`."
-        )
-
-    @abc.abstractmethod
-    def export_records(self, info: APIResult) -> dict[str, Record]:
-        """
-        Returns a mapping of identifiers and `Record`-objects that arise
-        from the given `APIResult`. This is used to bootstrap the
-        `JobData`-contents on the first `Stage`.
-        """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} missing implementation of "
-            + "`export_records`."
-        )
-
-    def post_process_record(self, info: APIResult, record: Record) -> None:
+    def eval(self, record: Record, api_result: APIResult) -> None:
         """
         Performs post-processing actions on given `record` in place.
         """
-        return
+        raise NotImplementedError(
+            f"{self.__class__.__name__} missing implementation of " + "`eval`."
+        )

@@ -2,18 +2,22 @@
 This module defines the `INGEST-ServiceAdapter`.
 """
 
-from typing import Any
-
 from dcm_common.services import APIResult
 import dcm_backend_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record, RecordStageInfo
+from dcm_job_processor.models import (
+    Stage,
+    Record,
+    JobConfig,
+    ArchiveAPI,
+    RecordStageInfo,
+)
 from .interface import ServiceAdapter
 
 
 class IngestAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `INGEST`-`Stage`."""
+
     _STAGE = Stage.INGEST
     _SERVICE_NAME = "Backend"
     _SDK = dcm_backend_sdk
@@ -28,57 +32,51 @@ class IngestAdapter(ServiceAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort_ingest
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if target is not None:
-            if "ingest" not in base_request_body:
-                base_request_body["ingest"] = {}
-            if "archiveId" not in base_request_body["ingest"]:
-                base_request_body["ingest"]["archiveId"] = ""
-            if "target" not in base_request_body["ingest"]:
-                base_request_body["ingest"]["target"] = {}
-            # TODO: the next step depends on the specific archive-system
-            base_request_body["ingest"]["target"]["subdirectory"] = (
-                target["path"]
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        ingest = {"ingest": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            ingest["token"] = record.stages[self.stage].token
+
+        archive_id = job_config.template.get("target_archive", {}).get(
+            "id", job_config.default_target_archive_id
+        )
+        if archive_id is None:
+            raise ValueError(
+                "Missing id of target archive (neither set in template nor "
+                + "as a default for the Job Processor)."
             )
-        return base_request_body
+        if archive_id not in job_config.archives:
+            raise ValueError(f"Unknown archive id '{archive_id}'.")
 
-    def success(self, info: APIResult) -> bool:
-        return info.report.get("data", {}).get("success", False)
+        ingest["ingest"]["archiveId"] = archive_id
 
-    def export_target(self, info: APIResult) -> Any:
-        return None
-
-    def export_records(self, info: APIResult) -> dict[str, Record]:
-        if info.report is None:
-            return {}
-
-        try:
-            # TODO: this also needs to be updated to support different
-            # archive systems
-            sip_path = info.report["args"]["ingest"]["target"]["subdirectory"]
-        except KeyError:
-            return {}
-        return {
-            sip_path: Record(
-                False, stages={
-                    self._STAGE: RecordStageInfo(
-                        True, self.success(info), None
-                    )
-                }
+        if Stage.TRANSFER in record.stages:
+            match (job_config.archives[archive_id].type_):
+                case ArchiveAPI.ROSETTA_REST_V0:
+                    ingest["ingest"]["target"] = {
+                        "subdirectory": record.stages[Stage.TRANSFER].artifact
+                    }
+        else:
+            raise ValueError(
+                f"Missing target SIP to ingest for record '{record.id_}'."
             )
-        }
 
-    def post_process_record(self, info: APIResult, record: Record) -> None:
-        if info.report is None:
-            return
+        return ingest
 
-        record.sip_id = (
-            info.report.get("data", {}).get("details", {})
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)
+        record.archive_sip_id = (
+            api_result.report.get("data", {})
+            .get("details", {})
             .get("deposit", {})
             .get("sip_id")
         )
-        record.ie_id = (
-            info.report.get("data", {}).get("details", {})
+        record.archive_ie_id = (
+            api_result.report.get("data", {})
+            .get("details", {})
             .get("sip", {})
             .get("iePids")
         )

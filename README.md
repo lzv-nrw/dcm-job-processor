@@ -73,11 +73,14 @@ pytest -v -s
 Service-specific environment variables are
 * `DB_LOAD_SCHEMA` [DEFAULT 0]: whether the database should be initialized with the database schema
 * `DB_STRICT_SCHEMA_VERSION` [DEFAULT 0] whether to enforce matching database schema version with respect to currently installed `dcm-database`
+* `PROCESS_INTERVAL` [DEFAULT 1] frequency for starting record-processes and processing results (locally)
+* `PROCESS_RECORD_CONCURRENCY` [DEFAULT 5] number of records that are processed simultaneously
 * `REQUEST_POLL_INTERVAL` [DEFAULT 0] interval for result-polling of other services after requests are submitted
 * `REQUEST_TIMEOUT` [DEFAULT 1] timeout duration for the submission of a request to a service in seconds
 * `PROCESS_TIMEOUT` [DEFAULT 30] timeout duration for the completion of a service job in seconds
 * `PROCESS_REQUEST_MAX_RETRIES` [DEFAULT 1] number of retries during task-submission and report-collection
 * `PROCESS_REQUEST_RETRY_INTERVAL` [DEFAULT 1] duration between retries of task-submission and report-collection in seconds
+* `PROCESS_LOG_ERROR_TRACEBACKS` [DEFAULT 1] whether to append stack traces to generic error-log messages
 * `IMPORT_MODULE_HOST` [DEFAULT http://localhost:8080] Import Module host address
 * `IP_BUILDER_HOST` [DEFAULT http://localhost:8081] IP Builder host address
 * `OBJECT_VALIDATOR_HOST` [DEFAULT http://localhost:8082] Object Validator host address
@@ -85,6 +88,20 @@ Service-specific environment variables are
 * `SIP_BUILDER_HOST` [DEFAULT http://localhost:8084] SIP Builder host address
 * `TRANSFER_MODULE_HOST` [DEFAULT http://localhost:8085] Transfer Module host address
 * `BACKEND_HOST` [DEFAULT http://localhost:8086] Backend host address
+* `ARCHIVES_SRC` [DEFAULT '[]']: array of archive configurations as JSON or path to a (UTF-8 encoded) JSON-file; every entry of that array needs to have the following signature (unknown keys are ignored)
+  ```json
+  {
+    "id": "<unique id>",
+    "type": "<archive type (see below)>",
+    "transferDestinationId": "<transfer destination id (see below)>"
+  }
+  ```
+
+  Currently, the following archive types are available:
+  * `"rosetta-rest-api-v0"`: See [ExLibris Rosetta REST-API](https://developers.exlibrisgroup.com/rosetta/apis/rest-apis/)
+
+  Note that the `"transferDestinationId"` is passed on to the [Transfer Module](https://github.com/lzv-nrw/dcm-transfer-module) during execution of a job with the given target-archive.
+* `DEFAULT_TARGET_ARCHIVE_ID` [DEFAULT null]: id of a default target-archive during an ingest (used if the template contains no id)
 
 Additionally this service provides environment options for
 * `BaseConfig`,

@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.0.0] - 2025-11-04
+
+### Changed
+
+- **Breaking:** migrated to database schema v3
+- **Breaking:** migrated to Import Module API v8
+- **Breaking:** migrated to Backend API v5
+- **Breaking:** migrated to API v3
+- completely overhauled models, components, and processing logic
+
 ## [3.0.5] - 2025-10-01
 
 ### Changed

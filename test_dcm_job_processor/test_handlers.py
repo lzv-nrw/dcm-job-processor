@@ -5,7 +5,7 @@ Test module for the `dcm_job_processor/handlers.py`.
 import pytest
 from data_plumber_http.settings import Responses
 
-from dcm_job_processor.models import Stage, JobConfig
+from dcm_job_processor.models import JobConfig
 from dcm_job_processor import handlers
 
 
@@ -19,138 +19,123 @@ def _process_handler():
     (
         pytest_args := [
             ({"no-process": None}, 400),
-            ({"process": {"args": {}}}, 400),  # missing from
-            ({"process": {"from": "import_ies"}}, 400),  # missing args
-            (  # bad args type
-                {"process": {"from": "import_ies", "args": None}},
-                422,
-            ),
-            ({"process": {"from": None, "args": {}}}, 422),  # bad from type
-            ({"process": {"from": "unknown", "args": {}}}, 422),  # bad from
-            (  # bad to type
-                {"process": {"from": "import_ies", "to": None, "args": {}}},
-                422,
-            ),
-            (  # bad to
-                {
-                    "process": {
-                        "from": "import_ies",
-                        "to": "unknown",
-                        "args": {},
-                    }
-                },
-                422,
-            ),
-            (
-                {"process": {"from": "import_ies", "args": {}}},
-                Responses.GOOD.status,
-            ),
+            ({"process": {}}, 400),  # missing id
+            ({"process": {"id": None}}, 422),  # bad id type
+            ({"process": {"id": "some-id"}}, Responses.GOOD.status),  # ok
+            ({"process": {"id": "some-id", "unknown": None}}, 400),  # unknown
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "callbackUrl": None,
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "callbackUrl": "no.scheme/path",
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "callbackUrl": "https://lzv.nrw/callback",
                 },
                 Responses.GOOD.status,
             ),
             (  # context
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": None,
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {},
                 },
                 Responses.GOOD.status,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {"unknown": None},
                 },
                 400,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
-                    "context": {"jobConfigId": None},
-                },
-                422,
-            ),
-            (
-                {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {"userTriggered": None},
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {"datetimeTriggered": None},
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {"datetimeTriggered": "0"},
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "context": {"triggerType": None},
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
+                    "context": {"artifactsTTL": None},
+                },
+                422,
+            ),
+            (
+                {
+                    "process": {"id": "some-id"},
+                    "context": {"artifactsTTL": -1},
+                },
+                422,
+            ),
+            (
+                {
+                    "process": {"id": "some-id"},
                     "context": {
-                        "jobConfigId": "a",
                         "userTriggered": "b",
                         "datetimeTriggered": "2024-01-01T00:00:00+01:00",
                         "triggerType": "manual",
+                        "artifactsTTL": 1,
                     },
                 },
                 Responses.GOOD.status,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "token": None
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "token": "non-uuid"
                 },
                 422,
             ),
             (
                 {
-                    "process": {"from": "import_ies", "args": {}},
+                    "process": {"id": "some-id"},
                     "token": "37ee72d6-80ab-4dcd-a68d-f8d32766c80d"
                 },
                 Responses.GOOD.status,
@@ -169,6 +154,3 @@ def test_process_handler(process_handler, json, status):
         print(output.last_message)
     else:
         assert isinstance(output.data.value["job_config"], JobConfig)
-        assert output.data.value["job_config"].from_ in Stage
-        if output.data.value["job_config"].to is not None:
-            assert output.data.value["job_config"].to in Stage

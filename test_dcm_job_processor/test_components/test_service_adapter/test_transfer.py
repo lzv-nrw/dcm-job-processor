@@ -5,18 +5,20 @@ Test module for the `ServiceAdapter` associated with `Stage.TRANSFER`.
 import pytest
 from dcm_common.services import APIResult
 
-from dcm_job_processor.models import Stage
+from dcm_job_processor.models import (
+    Stage,
+    JobConfig,
+    Record,
+    RecordStageInfo,
+    ArchiveConfiguration,
+    ArchiveAPI,
+)
 from dcm_job_processor.components.service_adapter import TransferAdapter
 
 
-@pytest.fixture(name="port")
-def _port():
-    return 8080
-
-
 @pytest.fixture(name="url")
-def _url(port):
-    return f"http://localhost:{port}"
+def _url():
+    return "http://localhost:8080"
 
 
 @pytest.fixture(name="adapter")
@@ -24,178 +26,192 @@ def _adapter(url):
     return TransferAdapter(url)
 
 
-@pytest.fixture(name="target")
-def _target():
-    return {
-        "path": "sip/59438ebf-75e0-4345-8d6b-132a57e1e4f5"
-    }
-
-
-@pytest.fixture(name="request_body")
-def _request_body():
-    return {
-        "transfer": {"destinationId": "destination-0"}
-    }
-
-
-@pytest.fixture(name="token")
-def _token():
-    return {
-        "value": "eb7948a58594df3400696b6ce12013b0e26348ef27e",
-        "expires": True,
-        "expires_at": "2024-08-09T13:15:10+00:00"
-    }
-
-
 @pytest.fixture(name="report")
-def _report(url, token, request_body):
+def _report(url):
     return {
         "host": url,
-        "token": token,
-        "args": request_body,
+        "token": {
+            "value": "eb7948a58594df3400696b6ce12013b0e26348ef27e",
+            "expires": True,
+            "expires_at": "2024-08-09T13:15:10+00:00",
+        },
+        "args": {
+            "ingest": {
+                "archiveId": "00873df3-150b-47f7-aceb-873de18c1cac",
+                "target": {"subdirectory": "path/to/resource"},
+            }
+        },
         "progress": {
             "status": "completed",
             "verbose": "Job terminated normally.",
-            "numeric": 100
+            "numeric": 100,
         },
         "log": {
             "EVENT": [
                 {
                     "datetime": "2024-08-09T12:15:10+00:00",
                     "origin": "Transfer Module",
-                    "body": "Some event"
+                    "body": "Some event",
                 },
             ]
         },
         "data": {
             "success": True,
-        }
+        },
     }
 
 
-@pytest.fixture(name="report_fail")
-def _report_fail(report):
-    report["data"]["success"] = False
-    return report
+@pytest.mark.parametrize(
+    "success", [True, False], ids=["success", "no-success"]
+)
+def test_success(success, adapter: TransferAdapter, report):
+    """Test method `TransferAdapter.success`."""
+    report["data"]["success"] = success
+    assert adapter.success(APIResult(report=report)) is success
 
 
-@pytest.fixture(name="transfer_module")
-def _transfer_module(port, token, report, run_service):
-    run_service(
-        routes=[
-            ("/transfer", lambda: (token, 201), ["POST"]),
-            ("/report", lambda: (report, 200), ["GET"]),
-        ],
-        port=port
+@pytest.mark.parametrize(
+    ("job_config", "record", "expected_request_body", "error"),
+    [
+        (
+            JobConfig(""),
+            Record(""),
+            None,
+            True,
+        ),
+        (
+            JobConfig("", _template={}),
+            Record(
+                "", stages={Stage.BUILD_SIP: RecordStageInfo(artifact="a")}
+            ),
+            None,
+            True,
+        ),
+        (
+            JobConfig(
+                "",
+                _template={"target_archive": {"id": "unknown"}},
+                _archives={},
+            ),
+            Record(
+                "", stages={Stage.BUILD_SIP: RecordStageInfo(artifact="a")}
+            ),
+            None,
+            True,
+        ),
+        (
+            JobConfig(
+                "",
+                _template={"target_archive": {"id": "archive-0"}},
+                _archives={
+                    "archive-0": ArchiveConfiguration(
+                        "", ArchiveAPI.ROSETTA_REST_V0, "destination-0"
+                    )
+                },
+            ),
+            Record(
+                "", stages={Stage.BUILD_SIP: RecordStageInfo(artifact="a")}
+            ),
+            {
+                "transfer": {
+                    "target": {"path": "a"},
+                    "destinationId": "destination-0",
+                }
+            },
+            False,
+        ),
+        (
+            JobConfig(
+                "",
+                _template={},
+                _default_target_archive_id="archive-0",
+                _archives={
+                    "archive-0": ArchiveConfiguration(
+                        "", ArchiveAPI.ROSETTA_REST_V0, "destination-0"
+                    )
+                },
+            ),
+            Record(
+                "", stages={Stage.BUILD_SIP: RecordStageInfo(artifact="a")}
+            ),
+            {
+                "transfer": {
+                    "target": {"path": "a"},
+                    "destinationId": "destination-0",
+                }
+            },
+            False,
+        ),
+        (
+            JobConfig(
+                "",
+                _template={},
+                _default_target_archive_id="archive-0",
+                _archives={
+                    "archive-0": ArchiveConfiguration(
+                        "", ArchiveAPI.ROSETTA_REST_V0, "destination-0"
+                    )
+                },
+            ),
+            Record(
+                "",
+                stages={
+                    Stage.BUILD_SIP: RecordStageInfo(artifact="a"),
+                    Stage.TRANSFER: RecordStageInfo(token="b"),
+                },
+            ),
+            {
+                "transfer": {
+                    "target": {"path": "a"},
+                    "destinationId": "destination-0",
+                },
+                "token": "b",
+            },
+            False,
+        ),
+    ],
+    ids=[
+        "missing-target",
+        "missing-archive",
+        "unkown-archive",
+        "explicit-archive",
+        "default-archive",
+        "token",
+    ],
+)
+def test_build_request_body_simple(
+    job_config, record, expected_request_body, error, adapter: TransferAdapter
+):
+    """Test method `TransferAdapter.build_request_body`."""
+    if error:
+        with pytest.raises(ValueError) as exc_info:
+            adapter.build_request_body(job_config, record)
+        print(exc_info.value)
+    else:
+        assert (
+            adapter.build_request_body(job_config, record)
+            == expected_request_body
+        )
+
+
+def test_eval_ok(adapter: TransferAdapter, report):
+    """Test method `TransferAdapter.eval`."""
+    record = Record(
+        "",
+        stages={
+            Stage.BUILD_SIP: RecordStageInfo(artifact="path/a"),
+            Stage.TRANSFER: RecordStageInfo(),
+        },
     )
+    adapter.eval(record, APIResult(report=report))
+    assert record.stages[Stage.TRANSFER].success
+    assert record.stages[Stage.TRANSFER].artifact == "a"
 
 
-@pytest.fixture(name="transfer_module_fail")
-def _transfer_module_fail(port, token, report_fail, run_service):
-    run_service(
-        routes=[
-            ("/transfer", lambda: (token, 201), ["POST"]),
-            ("/report", lambda: (report_fail, 200), ["GET"]),
-        ],
-        port=port
-    )
-
-
-def fix_report_args(info: APIResult, target) -> None:
-    """Fixes args in report (missing due to faked service)"""
-    info.report["args"]["transfer"]["target"] = target
-
-
-def test_run(
-    adapter: TransferAdapter, request_body, target, report, transfer_module
-):
-    """Test method `run` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    assert info.completed
-    assert info.success
-    assert info.report == report
-
-
-def test_run_fail(
-    adapter: TransferAdapter, request_body, target, report_fail, transfer_module_fail
-):
-    """Test method `run` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    assert info.completed
-    assert not info.success
-    assert info.report == report_fail
-
-
-def test_success(
-    adapter: TransferAdapter, request_body, target, transfer_module
-):
-    """Test property `success` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    assert adapter.success(info)
-
-
-def test_success_fail(
-    adapter: TransferAdapter, request_body, target, transfer_module_fail
-):
-    """Test property `success` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    assert not adapter.success(info)
-
-
-def test_export_records(
-    adapter: TransferAdapter, request_body, target, transfer_module
-):
-    """Test method `export_records` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    records = adapter.export_records(info)
-    assert len(records) == 1
-    ip_id = list(records)[0]
-    assert Stage.TRANSFER in records[ip_id].stages
-
-
-def test_export_records_fail(
-    adapter: TransferAdapter, request_body, target, transfer_module_fail
-):
-    """Test method `export_records` of `TransferAdapter`."""
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    records = adapter.export_records(info)
-    assert len(records) == 1
-    ip_id = list(records)[0]
-    assert Stage.TRANSFER in records[ip_id].stages
-
-
-def test_export_records_report_none(adapter: TransferAdapter):
-    """
-    Test method `export_records` of `TransferAdapter` for no report.
-    """
-    assert adapter.export_records(APIResult()) == {}
-
-
-def test_export_target(
-    adapter: TransferAdapter, request_body, target, transfer_module
-):
-    """
-    Test method `export_target` of `TransferAdapter`.
-    """
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    target = adapter.export_target(info)
-    assert info.report["args"]["transfer"]["target"]["path"].endswith(
-        target["path"]
-    )
-
-
-def test_export_target_fail(
-    adapter: TransferAdapter, request_body, target, transfer_module_fail
-):
-    """
-    Test method `export_target` of `TransferAdapter`.
-    """
-    adapter.run(request_body, target, info := APIResult())
-    fix_report_args(info, target)
-    target = adapter.export_target(info)
-    assert target is None
+def test_eval_bad(adapter: TransferAdapter, report):
+    """Test method `TransferAdapter.eval`."""
+    report["data"] = {}
+    record = Record("", stages={Stage.TRANSFER: RecordStageInfo()})
+    adapter.eval(record, APIResult(report=report))
+    assert record.stages[Stage.TRANSFER].success is False
+    assert record.stages[Stage.TRANSFER].artifact is None

@@ -12,11 +12,9 @@ from dcm_job_processor import app_factory
 
 
 @pytest.fixture(name="sdk_testing_config")
-def _sdk_testing_config(testing_config, temp_folder):
+def _sdk_testing_config(testing_config):
     class SDKTestingConfig(testing_config):
-        testing_config.SCHEDULING_AT_STARTUP = True
-        testing_config.SQLITE_DB_FILE = temp_folder / str(uuid4())
-        testing_config.DB_ADAPTER_STARTUP_IMMEDIATELY = True
+        DB_ADAPTER_STARTUP_IMMEDIATELY = True
 
     return SDKTestingConfig
 
@@ -93,25 +91,14 @@ def test_default_identify(
 
 def test_process_report(
     process_sdk: dcm_job_processor_sdk.ProcessApi,
+    config_with_initialized_db,
     sdk_testing_config,
+    demo_data,
+    dcm_services,
     run_service,
-    import_report,
-    minimal_request_body,
 ):
     """Test endpoints `/process-POST` and `/report-GET`."""
-    # prepare test-setup
-    run_service(
-        routes=[
-            (
-                "/import/ies",
-                lambda: (import_report["token"], 201),
-                ["POST"],
-            ),
-            ("/report", lambda: (import_report, 200), ["GET"]),
-        ],
-        port=8080,
-    )
-    config = sdk_testing_config()
+
     run_service(
         from_factory=lambda: app_factory(sdk_testing_config()),
         port=8087,
@@ -119,7 +106,15 @@ def test_process_report(
     )
 
     submission = process_sdk.process(
-        minimal_request_body | {"context": {"triggerType": "manual"}}
+        {
+            "process": {
+                "id": demo_data.job_config0,
+            },
+            "context": {
+                "artifactsTTL": 1,
+                "triggerType": "manual",
+            },
+        }
     )
 
     while True:
@@ -132,15 +127,17 @@ def test_process_report(
 
     report = process_sdk.get_report(token=submission.value)
     assert report.data.success
-    assert len(report.children) == 1
+    assert report.data.issues == 1
+    assert len(report.data.records) == 2
+    assert len(report.children) == 8
 
     # validate database is being written
-    jobs = config.db.get_rows("jobs").eval()
+    jobs = config_with_initialized_db.db.get_rows("jobs").eval()
     assert len(jobs) == 1
     assert jobs[0]["token"] == submission.value
 
-    records = config.db.get_rows("records").eval()
-    assert len(records) == 1
+    records = config_with_initialized_db.db.get_rows("records").eval()
+    assert len(records) == 2
     assert records[0]["job_token"] == submission.value
 
 

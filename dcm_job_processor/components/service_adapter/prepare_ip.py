@@ -2,19 +2,16 @@
 This module defines the `PREPARE_IP-ServiceAdapter`.
 """
 
-from typing import Any
-from pathlib import Path
-
 from dcm_common.services import APIResult
 import dcm_preparation_module_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record, RecordStageInfo
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
 from .interface import ServiceAdapter
 
 
 class PrepareIPAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `PREPARE_IP`-`Stage`."""
+
     _STAGE = Stage.PREPARE_IP
     _SERVICE_NAME = "Preparation Module"
     _SDK = dcm_preparation_module_sdk
@@ -29,38 +26,68 @@ class PrepareIPAdapter(ServiceAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if target is not None:
-            if "preparation" not in base_request_body:
-                base_request_body["preparation"] = {}
-            base_request_body["preparation"]["target"] = target
-        return base_request_body
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        prepare_ip = {"preparation": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            prepare_ip["token"] = record.stages[self.stage].token
 
-    def success(self, info: APIResult) -> bool:
-        return info.report.get("data", {}).get("success", False)
+        if Stage.BUILD_IP in record.stages:
+            prepare_ip["preparation"]["target"] = {
+                "path": record.stages[Stage.BUILD_IP].artifact
+            }
+        elif Stage.IMPORT_IPS in record.stages:
+            prepare_ip["preparation"]["target"] = {
+                "path": record.stages[Stage.IMPORT_IPS].artifact
+            }
+        else:
+            raise ValueError(
+                f"Missing target IP to prepare for record '{record.id_}'."
+            )
 
-    def export_target(self, info: APIResult) -> Any:
-        try:
-            if info.report["data"]["success"]:
-                return {"path": info.report["data"]["path"]}
-        except KeyError:
-            pass
-        return None
+        rights_operations = job_config.data_processing.get(
+            "preparation", {}
+        ).get("rightsOperations")
+        preservation_operations = job_config.data_processing.get(
+            "preparation", {}
+        ).get("preservationOperations")
+        if (
+            rights_operations is not None
+            or preservation_operations is not None
+        ):
+            # Both 'rightsOperations' and 'preservationOperations' are
+            # treated as 'bagInfoOperations' from the Preparation Module-API.
+            # The two properties are separated in the backend-API to mirror
+            # their separation in the client.
+            prepare_ip["preparation"]["bagInfoOperations"] = (
+                rights_operations or []
+            ) + (preservation_operations or [])
 
-    def export_records(self, info: APIResult) -> dict[str, Record]:
-        if info.report is None:
-            return {}
-
-        try:
-            pip_path = info.report["data"]["path"]
-        except KeyError:
-            return {}
-        return {
-            Path(pip_path).name: Record(
-                False, stages={
-                    self._STAGE: RecordStageInfo(
-                        True, self.success(info), None
-                    )
+        if record.bitstream:
+            if "bagInfoOperations" not in prepare_ip["preparation"]:
+                prepare_ip["preparation"]["bagInfoOperations"] = []
+            prepare_ip["preparation"]["bagInfoOperations"].append(
+                {
+                    "type": "set",
+                    "targetField": "Preservation-Level",
+                    "value": "Bitstream",
                 }
             )
-        }
+
+        sig_prop_operations = job_config.data_processing.get(
+            "preparation", {}
+        ).get("sigPropOperations")
+        if sig_prop_operations is not None:
+            prepare_ip["preparation"][
+                "sigPropOperations"
+            ] = sig_prop_operations
+
+        return prepare_ip
+
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)
+        record.stages[self.stage].artifact = api_result.report.get(
+            "data", {}
+        ).get("path")

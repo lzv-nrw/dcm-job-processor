@@ -2,18 +2,16 @@
 This module defines the `VALIDATION_METADATA-ServiceAdapter`.
 """
 
-from typing import Any
-
 from dcm_common.services import APIResult
 import dcm_ip_builder_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from dcm_job_processor.models.job_result import Record
-from .validation import ValidationAdapter
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
+from .interface import ServiceAdapter
 
 
-class ValidationMetadataAdapter(ValidationAdapter):
+class ValidationMetadataAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `VALIDATION_METADATA`-`Stage`."""
+
     _STAGE = Stage.VALIDATION_METADATA
     _SERVICE_NAME = "IP Builder"
     _SDK = dcm_ip_builder_sdk
@@ -28,18 +26,41 @@ class ValidationMetadataAdapter(ValidationAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort_validation
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if target is not None:
-            if "validation" not in base_request_body:
-                base_request_body["validation"] = {}
-            base_request_body["validation"]["target"] = target
-        return base_request_body
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        validation = {"validation": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            validation["token"] = record.stages[self.stage].token
 
-    def post_process_record(self, info: APIResult, record: Record) -> None:
-        if info.report is None:
-            return
+        if Stage.BUILD_IP in record.stages:
+            validation["validation"]["target"] = {
+                "path": record.stages[Stage.BUILD_IP].artifact
+            }
+        elif Stage.IMPORT_IPS in record.stages:
+            validation["validation"]["target"] = {
+                "path": record.stages[Stage.IMPORT_IPS].artifact
+            }
+        else:
+            raise ValueError(
+                "Missing target IP to validate metadata/structure for "
+                + f"record '{record.id_}'."
+            )
 
-        record.origin_system_id = info.report.get("data", {}).get(
+        return validation
+
+    def success(self, info: APIResult) -> bool:
+        return info.report.get("data", {}).get("valid", False)
+
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)
+        record.source_organization = api_result.report.get("data", {}).get(
+            "sourceOrganization"
+        )
+        record.origin_system_id = api_result.report.get("data", {}).get(
             "originSystemId"
         )
-        record.external_id = info.report.get("data", {}).get("externalId")
+        record.external_id = api_result.report.get("data", {}).get(
+            "externalId"
+        )

@@ -1,10 +1,5 @@
 """JobResult and related data classes test-module."""
 
-import threading
-import pickle
-
-import pytest
-from dcm_common.services import APIResult
 from dcm_common.orchestra import Token
 from dcm_common.models.data_model import get_model_serialization_test
 
@@ -12,6 +7,7 @@ from dcm_job_processor.models import (
     Stage,
     ServiceReport,
     RecordStageInfo,
+    RecordStatus,
     Record,
     JobResult,
 )
@@ -76,81 +72,39 @@ test_record_stage_info_json = get_model_serialization_test(
     RecordStageInfo,
     (
         ((), {}),
-        ((True, True, "0"), {}),
+        ((True, True, "abc", "abc@xyz", "path/0"), {}),
     ),
 )
-
-
-def test_record():
-    """Test constructor of class `Record`."""
-    record = Record(success=True)
-    assert record.success
-    assert len(record.stages) == 0
-
-
-def test_record_missing_success():
-    """Test constructor of class `Record`."""
-    record = Record()
-    assert record.success is None
-
-
-def test_record_make_picklable(request):
-    """Test method `make_picklable` of class `Record`."""
-
-    # link un-picklable data to Stage.value.adapter
-    def reset():
-        Stage.IMPORT_IES.value.adapter = None
-
-    request.addfinalizer(reset)
-    Stage.IMPORT_IES.value.adapter = threading.Lock()
-
-    record = Record(stages={Stage.IMPORT_IES: APIResult()})
-    with pytest.raises(TypeError):
-        pickle.dumps(record)
-    pickle.dumps(record.make_picklable())
-    pickle.dumps(record)
-    assert list(record.stages.keys()) == [Stage.IMPORT_IES.value.identifier]
 
 
 test_record_json = get_model_serialization_test(
     Record,
     (
-        ((), {}),
+        (("some-id",), {}),
         (
-            (True,),
+            ("some-id",),
             {
+                "started": "a",
+                "completed": "b",
+                "status": RecordStatus.COMPLETE,
+                "datetime_changed": "0",
+                "bitstream": True,
+                "skip_object_validation": True,
+                "external_id": "ext-id",
+                "source_organization": "src-org",
+                "origin_system_id": "orig-sys-id",
+                "import_type": "oai",
+                "oai_identifier": "oai-id",
+                "oai_datestamp": "1",
+                "hotfolder_original_path": "hotfolder-path",
+                "archive_sip_id": "arch-sip-id",
+                "archive_ie_id": "arch-ie-id",
+                "ie_id": "ie-id",
                 "stages": {Stage.IMPORT_IES: RecordStageInfo()},
-                "external_id": "a",
-                "origin_system_id": "b",
-                "sip_id": "c",
-                "ie_id": "d",
-                "datetime_processed": "0",
             },
         ),
     ),
 )
-
-
-def test_job_result():
-    """Test constructor of class `JobResult`."""
-    result = JobResult(success=True)
-    assert result.success
-    assert len(result.records) == 0
-
-
-def test_job_result_missing_success():
-    """Test constructor of class `JobResult`."""
-    result = JobResult()
-    assert result.success is None
-
-
-def test_job_result_with_records():
-    """Test constructor of class `JobResult`."""
-    record = Record()
-    record_id = "id"
-    result = JobResult(records={record_id: record})
-    assert record_id in result.records
-    assert result.records[record_id] == record
 
 
 test_job_result_json = get_model_serialization_test(
@@ -158,17 +112,16 @@ test_job_result_json = get_model_serialization_test(
     (
         ((), {}),
         (
-            (True,),
+            (),
             {
+                "success": False,
+                "issues": 1,
                 "records": {
-                    "id": Record(stages={Stage.IMPORT_IES: RecordStageInfo()})
-                }
+                    "id": Record(
+                        "id", stages={Stage.IMPORT_IES: RecordStageInfo()}
+                    )
+                },
             },
         ),
     ),
 )
-
-
-def test_job_result_json_missing_success():
-    """Test property `json` of class `JobResult`."""
-    assert "success" not in JobResult().json

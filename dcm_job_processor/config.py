@@ -11,6 +11,8 @@ from dcm_common.orchestra import dillignore
 import dcm_database
 import dcm_job_processor_api
 
+from dcm_job_processor import util
+
 
 if (
     os.environ.get("ORCHESTRA_MP_METHOD", "spawn") == "fork"
@@ -18,7 +20,7 @@ if (
 ):
     warn(
         "The use of multiprocessing-method 'fork' along with sqlite3 may "
-        + "cause deadlocks in jobs. It is recommanded to either use the "
+        + "cause deadlocks in jobs. It is recommended to either use the "
         + "'spawn'-method or a postgres-database."
     )
 
@@ -34,6 +36,10 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     FS_MOUNT_POINT = Path.cwd()
 
     # ------ PROCESS ------
+    PROCESS_INTERVAL = float(os.environ.get("PROCESS_INTERVAL") or 1.0)
+    PROCESS_RECORD_CONCURRENCY = int(
+        os.environ.get("PROCESS_RECORD_CONCURRENCY") or 5
+    )
     REQUEST_POLL_INTERVAL = float(
         os.environ.get("REQUEST_POLL_INTERVAL") or 1.0
     )
@@ -45,6 +51,9 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     PROCESS_REQUEST_RETRY_INTERVAL = float(
         os.environ.get("PROCESS_REQUEST_RETRY_INTERVAL", 1.0)
     )
+    PROCESS_LOG_ERROR_TRACEBACKS = (
+        int(os.environ.get("PROCESS_LOG_ERROR_TRACEBACKS") or 1)
+    ) == 1
 
     IMPORT_MODULE_HOST = (
         os.environ.get("IMPORT_MODULE_HOST") or "http://localhost:8080"
@@ -66,6 +75,12 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
     )
     BACKEND_HOST = (
         os.environ.get("BACKEND_HOST") or "http://localhost:8086"
+    )
+
+    # ------ TRANSFER & INGEST ------
+    ARCHIVES_SRC = os.environ.get("ARCHIVES_SRC", "[]")
+    DEFAULT_TARGET_ARCHIVE_ID = os.environ.get(
+        "DEFAULT_TARGET_ARCHIVE_ID"
     )
 
     # ------ EXTENSIONS ------
@@ -97,6 +112,21 @@ class AppConfig(OrchestratedAppConfig, DBConfig):
                 "The Job Processor does not support an in-memory "
                 + "SQLite-database."
             )
+
+        # load archives
+        try:
+            archives_src = Path(self.ARCHIVES_SRC)
+            if not archives_src.is_file():
+                raise FileNotFoundError("Not a file.")
+        except (OSError, FileNotFoundError):
+            self.archives = util.load_archive_configurations_from_string(
+                self.ARCHIVES_SRC
+            )
+        else:
+            self.archives = util.load_archive_configurations_from_file(
+                archives_src
+            )
+
         super().__init__()
 
     def set_identity(self) -> None:

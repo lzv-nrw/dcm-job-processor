@@ -1,9 +1,9 @@
 """Input handlers for the 'DCM Job Processor'-app."""
 
-from data_plumber_http import Property, Object, String, Url
+from data_plumber_http import Property, Object, String, Boolean, Integer, Url
 from dcm_common.services.handlers import UUID
 
-from dcm_job_processor.models import TriggerType, JobContext, Stage, JobConfig
+from dcm_job_processor.models import TriggerType, JobContext, JobConfig
 
 
 ISODateTime = String(
@@ -11,18 +11,24 @@ ISODateTime = String(
 )
 
 
+class HandlerTriggerType(String):
+    def make(self, json, loc):
+        r = super().make(json, loc)
+        if r[0] is None:
+            return r
+        return TriggerType(r[0]), r[1], r[2]
+
+
 process_handler = Object(
     properties={
         Property("process", "job_config", required=True): Object(
             model=JobConfig,
             properties={
-                Property("from", "from_", required=True): String(
-                    enum=[s.name.lower() for s in Stage]
-                ),
-                Property("to"): String(enum=[s.name.lower() for s in Stage]),
-                Property("args", required=True): Object(free_form=True),
+                Property("id", "id_", required=True): String(),
+                Property("testMode", "test_mode"): Boolean(),
+                Property("resume"): Boolean(),
             },
-            accept_only=["from", "to", "args"],
+            accept_only=["id", "testMode", "resume"],
         ),
         Property("context"): Object(
             model=JobContext,
@@ -32,8 +38,11 @@ process_handler = Object(
                 Property(
                     "datetimeTriggered", "datetime_triggered"
                 ): ISODateTime,
-                Property("triggerType", "trigger_type"): String(
+                Property("triggerType", "trigger_type"): HandlerTriggerType(
                     enum=[t.value for t in TriggerType]
+                ),
+                Property("artifactsTTL", "artifacts_ttl"): Integer(
+                    min_value=0
                 ),
             },
             accept_only=[
@@ -41,6 +50,7 @@ process_handler = Object(
                 "userTriggered",
                 "datetimeTriggered",
                 "triggerType",
+                "artifactsTTL",
             ],
         ),
         Property("token"): UUID(),

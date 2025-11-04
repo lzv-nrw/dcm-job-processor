@@ -3,57 +3,21 @@ JobContext data-model definition
 """
 
 from typing import Optional
-from enum import Enum
+from dataclasses import dataclass
 
 from dcm_common.models import DataModel
 
-
-class TriggerType(Enum):
-    """Job execution triggers"""
-
-    MANUAL = "manual"
-    SCHEDULED = "scheduled"
-    ONETIME = "onetime"
-    TEST = "test"
+from .enums import TriggerType
 
 
+@dataclass
 class JobContext(DataModel):
     """Job execution context"""
 
-    job_config_id: Optional[str]
-    user_triggered: Optional[str]
-    datetime_triggered: Optional[str]
-    trigger_type: Optional[TriggerType | str]
-
-    def __init__(
-        self,
-        job_config_id: Optional[str] = None,
-        user_triggered: Optional[str] = None,
-        datetime_triggered: Optional[str] = None,
-        trigger_type: Optional[TriggerType | str] = None,
-    ) -> None:
-        self.job_config_id = job_config_id
-        self.user_triggered = user_triggered
-        self.datetime_triggered = datetime_triggered
-        self.trigger_type = (
-            trigger_type if trigger_type is None else TriggerType(trigger_type)
-        )
-
-    @DataModel.serialization_handler("job_config_id", "jobConfigId")
-    @classmethod
-    def job_config_id_serialization(cls, value):
-        """Performs `job_config_id`-serialization."""
-        if value is None:
-            DataModel.skip()
-        return value
-
-    @DataModel.deserialization_handler("job_config_id", "jobConfigId")
-    @classmethod
-    def job_config_id_deserialization(cls, value):
-        """Performs `job_config_id`-deserialization."""
-        if value is None:
-            DataModel.skip()
-        return value
+    user_triggered: Optional[str] = None
+    datetime_triggered: Optional[str] = None
+    trigger_type: Optional[TriggerType] = None
+    artifacts_ttl: Optional[int] = None
 
     @DataModel.serialization_handler("user_triggered", "userTriggered")
     @classmethod
@@ -104,3 +68,19 @@ class JobContext(DataModel):
         if value is None:
             DataModel.skip()
         return TriggerType(value)
+
+    @DataModel.serialization_handler("artifacts_ttl", "artifactsTTL")
+    @classmethod
+    def artifacts_ttl_serialization(cls, value):
+        """Performs `artifacts_ttl`-serialization."""
+        if value is None:
+            DataModel.skip()
+        return value
+
+    @DataModel.deserialization_handler("artifacts_ttl", "artifactsTTL")
+    @classmethod
+    def artifacts_ttl_deserialization(cls, value):
+        """Performs `artifacts_ttl`-deserialization."""
+        if value is None:
+            DataModel.skip()
+        return value

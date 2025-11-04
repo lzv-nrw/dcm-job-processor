@@ -2,16 +2,16 @@
 This module defines the `VALIDATION_PAYLOAD-ServiceAdapter`.
 """
 
-from typing import Any
-
+from dcm_common.services import APIResult
 import dcm_object_validator_sdk
 
-from dcm_job_processor.models.job_config import Stage
-from .validation import ValidationAdapter
+from dcm_job_processor.models import Stage, Record, JobConfig, RecordStageInfo
+from .interface import ServiceAdapter
 
 
-class ValidationPayloadAdapter(ValidationAdapter):
+class ValidationPayloadAdapter(ServiceAdapter):
     """`ServiceAdapter` for the `VALIDATION_PAYLOAD`-`Stage`."""
+
     _STAGE = Stage.VALIDATION_PAYLOAD
     _SERVICE_NAME = "Object Validator"
     _SDK = dcm_object_validator_sdk
@@ -26,11 +26,40 @@ class ValidationPayloadAdapter(ValidationAdapter):
     def _get_abort_endpoint(self):
         return self._api_client.abort
 
-    def _build_request_body(self, base_request_body: dict, target: Any):
-        if "validation" not in base_request_body:
-            base_request_body["validation"] = {}
-        if target is not None:
-            base_request_body["validation"]["target"] = target
-        if "plugins" not in base_request_body["validation"]:
-            base_request_body["validation"]["plugins"] = {}
-        return base_request_body
+    def build_request_body(
+        self, job_config: JobConfig, record: Record
+    ) -> dict:
+        """Returns request body."""
+        validation = {"validation": {}}
+        if record.stages.get(self.stage, RecordStageInfo()).token is not None:
+            validation["token"] = record.stages[self.stage].token
+
+        if Stage.BUILD_IP in record.stages:
+            validation["validation"]["target"] = {
+                "path": record.stages[Stage.BUILD_IP].artifact
+            }
+        elif Stage.IMPORT_IPS in record.stages:
+            validation["validation"]["target"] = {
+                "path": record.stages[Stage.IMPORT_IPS].artifact
+            }
+        else:
+            raise ValueError(
+                "Missing target IP to validate payload for record "
+                + f"'{record.id_}'."
+            )
+
+        validation["validation"]["plugins"] = {
+            "integrity": {"plugin": "integrity-bagit", "args": {}},
+            "format": {
+                "plugin": "jhove-fido-mimetype-bagit",
+                "args": {},
+            },
+        }
+
+        return validation
+
+    def success(self, info: APIResult) -> bool:
+        return info.report.get("data", {}).get("valid", False)
+
+    def eval(self, record: Record, api_result: APIResult) -> None:
+        record.stages[self.stage].success = self.success(api_result)

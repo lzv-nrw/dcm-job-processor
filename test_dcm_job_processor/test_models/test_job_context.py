@@ -12,10 +12,10 @@ test_job_config_json = get_model_serialization_test(
         (
             (),
             {
-                "job_config_id": "a",
                 "user_triggered": "b",
                 "datetime_triggered": "0",
                 "trigger_type": TriggerType.MANUAL,
+                "artifacts_ttl": 1,
             },
         ),
     ),
