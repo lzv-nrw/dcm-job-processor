@@ -1,5 +1,11 @@
 # Changelog
 
+## [4.0.1] - 2025-11-05
+
+### Fixed
+
+- fixed pickling errors when registering child-jobs in docker
+
 ## [4.0.0] - 2025-11-04
 
 ### Changed

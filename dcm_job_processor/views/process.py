@@ -1001,10 +1001,17 @@ class ProcessView(services.OrchestratedView):
                     ChildJob(
                         stage_info.token,
                         stage_info.log_id,
-                        adapter.get_abort_callback(
+                        adapter.get_picklable_abort_callback(
                             stage_info.token,
                             stage_info.log_id,
-                            "Job Processor",
+                            adapter.__class__,
+                            adapter.url,
+                            adapter.interval,
+                            adapter.timeout,
+                            adapter.request_timeout,
+                            adapter.max_retries,
+                            adapter.retry_interval,
+                            adapter.retry_on,
                         ),
                     )
                 )

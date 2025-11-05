@@ -5,6 +5,7 @@ Job Processor-app.
 
 import abc
 
+from dcm_common import LoggingContext
 from dcm_common.services import APIResult, ServiceAdapter as ServiceAdapter_
 
 from dcm_job_processor.models import Stage, Record, JobConfig
@@ -70,3 +71,67 @@ class ServiceAdapter(ServiceAdapter_, metaclass=abc.ABCMeta):
         raise NotImplementedError(
             f"{self.__class__.__name__} missing implementation of " + "`eval`."
         )
+
+    # define custom callback for abort to avoid pickling issues
+    # encountered in the ServiceAdapter-default (only in docker
+    # for some reason)
+    # (likely related to adapter-modules importing the Stage-enum)
+    @staticmethod
+    def get_picklable_abort_callback(
+        token,
+        child_name,
+        adapter_type,
+        url,
+        interval,
+        timeout,
+        request_timeout,
+        max_retries,
+        retry_interval,
+        retry_on,
+    ):
+        """
+        Returns helper function for abort via `ServiceAdapter`.
+        """
+        def child_abort(info, context):
+            # sdk uses urllib3 which does not work well with
+            # dill (likely due to connection-pooling); create new
+            # instance of adapter instead to avoid pickling
+            adapter = adapter_type(
+                url,
+                interval,
+                timeout,
+                request_timeout,
+                max_retries,
+                retry_interval,
+                retry_on,
+            )
+            # abort
+            adapter.abort(
+                None,
+                args=(
+                    token,
+                    {
+                        "origin": context.origin,
+                        "reason": context.reason,
+                    },
+                ),
+            )
+            # fetch latest report
+            if info.report.children is None:
+                info.report.children = {}
+            try:
+                info.report.children[child_name] = (
+                    adapter.get_info(token).report
+                )
+            # pylint: disable=broad-exception-caught
+            except Exception as exc_info:
+                info.report.log.log(
+                    LoggingContext.ERROR,
+                    origin="Job Processor",
+                    body=(
+                        "Failed to fetch latest results from child "
+                        + f"'{child_name}' at '{url}': {exc_info}"
+                    ),
+                )
+
+        return child_abort
